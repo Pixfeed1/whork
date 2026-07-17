@@ -1,4 +1,4 @@
-# Proxy Selectif Oxylabs — v1.2.0
+# Proxy Selectif Oxylabs — v1.2.1
 
 Extension Chrome (MV3) qui fait apparaitre tout un groupe de consultants avec la
 **meme IP fixe Oxylabs** sur des domaines cibles (ex. `hellowork.com`), pour
@@ -13,8 +13,13 @@ Orbita, sans serveur / VPS** (donc compatible avec un hebergement mutualise).
 - Chaque consultant utilise **son propre Chrome** : plus aucun verrou de
   simultaneite (contrairement a GoLogin qui interdit d'ouvrir un profil deux
   fois). Ils peuvent donc etre connectes en meme temps.
-- **Optionnel** : alignement du fingerprint du groupe (User-Agent, langues,
-  timezone, plateforme, resolution) sur les domaines cibles.
+- **Optionnel** : alignement du fingerprint du groupe sur les domaines cibles.
+  v1.2.1 assure la **coherence complete UA <-> client hints** : User-Agent,
+  Accept-Language, Sec-CH-UA (+ mobile / platform / version / arch / bitness)
+  au niveau reseau, et `navigator.userAgent` / `userAgentData` (brands +
+  getHighEntropyValues) / langues / timezone / ecran au niveau JS. Le vrai OS
+  ne fuit donc plus via `navigator.userAgentData` (trou classique des
+  extensions "UA only"). Un profil coherent Windows/Chrome est pre-rempli.
 
 ## Strategie recommandee (du moins cher au plus cher)
 

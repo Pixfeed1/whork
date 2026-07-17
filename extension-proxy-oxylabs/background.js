@@ -1,6 +1,6 @@
 // =====================================================================
 // Proxy Selectif Oxylabs - service worker (Manifest V3, Chrome 108+)
-// v1.2.0
+// v1.2.1
 //
 //  1. chrome.proxy en mode "pac_script" : seuls les domaines cibles
 //     (+ ip.oxylabs.io, endpoint de diagnostic) passent par le proxy,
@@ -11,10 +11,35 @@
 //  3. Failsafe : sur echecs de tunnel repetes, le routage est coupe
 //     automatiquement, l'utilisateur est notifie, la navigation
 //     repasse en direct. Reactivation via popup ou Options.
-//  4. (v1.2.0) Alignement optionnel du fingerprint du groupe sur les
-//     domaines cibles : User-Agent / Accept-Language / Sec-CH-UA au
-//     niveau reseau, + navigator / langues / timezone / ecran en JS.
+//  4. Alignement optionnel du fingerprint du groupe sur les domaines
+//     cibles. v1.2.1 : COHERENCE COMPLETE UA <-> client hints.
+//       - reseau : User-Agent, Accept-Language, Sec-CH-UA (+ mobile,
+//         platform, platform-version, arch, bitness, full-version[-list]).
+//       - JS : navigator.userAgent/appVersion/platform/languages,
+//         navigator.userAgentData (brands + getHighEntropyValues),
+//         timezone, ecran.
+//     => un vrai Mac force en profil Windows n'expose plus son OS via
+//        userAgentData (le trou principal des extensions "UA only").
 // =====================================================================
+
+// Profil cible coherent par defaut (Windows 10 / Chrome 126 / fr-FR).
+// Tous les consultants partagent CE profil => empreinte identique.
+const FP_PROFILE = {
+  fpUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  fpAcceptLanguage: "fr-FR,fr;q=0.9",
+  fpSecChUa: '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+  fpSecChUaMobile: "?0",
+  fpUaPlatform: "Windows",
+  fpPlatformVersion: "10.0.0",
+  fpUaFullVersion: "126.0.0.0",
+  fpArch: "x86",
+  fpBitness: "64",
+  fpPlatform: "Win32",
+  fpLanguages: "fr-FR,fr",
+  fpTimezone: "Europe/Paris",
+  fpScreenW: 1920,
+  fpScreenH: 1080
+};
 
 const DEFAULTS = {
   proxyHost: "pr.oxylabs.io",
@@ -26,14 +51,7 @@ const DEFAULTS = {
 
   // --- Alignement fingerprint du groupe (optionnel) ---
   alignFingerprint: false,
-  fpUserAgent: "",
-  fpAcceptLanguage: "fr-FR,fr;q=0.9",
-  fpUaPlatform: "Windows",
-  fpLanguages: "fr-FR,fr",
-  fpPlatform: "Win32",
-  fpTimezone: "Europe/Paris",
-  fpScreenW: 1920,
-  fpScreenH: 1080
+  ...FP_PROFILE
 };
 
 // Endpoint de diagnostic, toujours route via le proxy.
@@ -67,12 +85,10 @@ async function applyFromStorage() {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  // Ne re-appliquer que si un champ impactant le routage / fingerprint a change.
   const keys = Object.keys(changes);
   const watched = [
     "username", "password", "proxyHost", "proxyPort", "domains", "suspended",
-    "alignFingerprint", "fpUserAgent", "fpAcceptLanguage", "fpUaPlatform",
-    "fpLanguages", "fpPlatform", "fpTimezone", "fpScreenW", "fpScreenH"
+    "alignFingerprint", ...Object.keys(FP_PROFILE)
   ];
   if (keys.some(k => watched.includes(k))) {
     applyFromStorage();
@@ -117,14 +133,11 @@ chrome.webRequest.onAuthRequired.addListener(
       return;
     }
     if (pendingAuthRequests.has(details.requestId)) {
-      // Deuxieme challenge sur la meme requete : credentials refuses.
       pendingAuthRequests.delete(details.requestId);
       asyncCallback({ cancel: true });
       return;
     }
     pendingAuthRequests.add(details.requestId);
-    // Lecture directe du storage : le service worker peut avoir ete
-    // reveille par ce challenge, la memoire n'est pas fiable ici.
     chrome.storage.local
       .get({ username: "", password: "" })
       .then(creds => {
@@ -133,10 +146,7 @@ chrome.webRequest.onAuthRequired.addListener(
           return;
         }
         asyncCallback({
-          authCredentials: {
-            username: creds.username,
-            password: creds.password
-          }
+          authCredentials: { username: creds.username, password: creds.password }
         });
       })
       .catch(() => asyncCallback({ cancel: true }));
@@ -152,7 +162,6 @@ chrome.webRequest.onCompleted.addListener(clearPending, { urls: ["<all_urls>"] }
 
 // --- Failsafe : coupure auto sur echecs de tunnel repetes ----------------
 
-// 2 echecs de tunnel en moins de 30 s sur un domaine cible => suspension.
 const FAIL_WINDOW_MS = 30000;
 const FAIL_THRESHOLD = 2;
 let failTimestamps = [];
@@ -181,7 +190,6 @@ chrome.webRequest.onErrorOccurred.addListener(async details => {
   if (failTimestamps.length >= FAIL_THRESHOLD && !cfg.suspended) {
     failTimestamps = [];
     await chrome.storage.local.set({ suspended: true });
-    // storage.onChanged declenche applyFromStorage => proxy clear.
     chrome.notifications.create("proxy-suspended", {
       type: "basic",
       iconUrl: "icon128.png",
@@ -198,6 +206,20 @@ chrome.webRequest.onErrorOccurred.addListener(async details => {
 
 const DNR_RULE_ID = 1001;
 
+function parseBrands(secChUa) {
+  const brands = [];
+  const re = /"([^"]*)";v="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(secChUa || "")) !== null) {
+    brands.push({ brand: m[1], version: m[2] });
+  }
+  return brands;
+}
+
+function fullVersionListHeader(brands, fullVersion) {
+  return brands.map(b => `"${b.brand}";v="${fullVersion}"`).join(", ");
+}
+
 async function updateHeaderRules(cfg, on) {
   const removeRuleIds = [DNR_RULE_ID];
   const domains = (cfg.domains || []).map(d => String(d).trim().toLowerCase()).filter(Boolean);
@@ -207,10 +229,21 @@ async function updateHeaderRules(cfg, on) {
     return;
   }
 
-  const headers = [];
-  if (cfg.fpUserAgent) headers.push({ header: "user-agent", operation: "set", value: cfg.fpUserAgent });
-  if (cfg.fpAcceptLanguage) headers.push({ header: "accept-language", operation: "set", value: cfg.fpAcceptLanguage });
-  if (cfg.fpUaPlatform) headers.push({ header: "sec-ch-ua-platform", operation: "set", value: `"${cfg.fpUaPlatform}"` });
+  const brands = parseBrands(cfg.fpSecChUa);
+  const set = (header, value) => (value ? { header, operation: "set", value } : null);
+
+  const headers = [
+    set("user-agent", cfg.fpUserAgent),
+    set("accept-language", cfg.fpAcceptLanguage),
+    set("sec-ch-ua", cfg.fpSecChUa),
+    set("sec-ch-ua-mobile", cfg.fpSecChUaMobile),
+    set("sec-ch-ua-platform", cfg.fpUaPlatform ? `"${cfg.fpUaPlatform}"` : ""),
+    set("sec-ch-ua-platform-version", cfg.fpPlatformVersion ? `"${cfg.fpPlatformVersion}"` : ""),
+    set("sec-ch-ua-arch", cfg.fpArch ? `"${cfg.fpArch}"` : ""),
+    set("sec-ch-ua-bitness", cfg.fpBitness ? `"${cfg.fpBitness}"` : ""),
+    set("sec-ch-ua-full-version", cfg.fpUaFullVersion ? `"${cfg.fpUaFullVersion}"` : ""),
+    set("sec-ch-ua-full-version-list", brands.length ? fullVersionListHeader(brands, cfg.fpUaFullVersion) : "")
+  ].filter(Boolean);
 
   const addRules = headers.length
     ? [{
@@ -228,15 +261,19 @@ async function updateHeaderRules(cfg, on) {
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules }).catch(() => {});
 }
 
-// --- Alignement fingerprint : niveau JS (navigator / timezone / ecran) -------
+// --- Alignement fingerprint : niveau JS (world MAIN) -------------------------
 
 let fpNavListenerBound = false;
 
-// Injectee dans le contexte de la page (world MAIN) sur les domaines cibles.
+// Injectee dans le contexte de la page sur les domaines cibles.
 function fpSpoof(c) {
   try {
     const def = (o, p, v) => { try { Object.defineProperty(o, p, { get: () => v, configurable: true }); } catch (e) {} };
-    if (c.ua) def(navigator, "userAgent", c.ua);
+
+    if (c.ua) {
+      def(navigator, "userAgent", c.ua);
+      def(navigator, "appVersion", c.ua.replace(/^Mozilla\//, ""));
+    }
     if (c.platform) def(navigator, "platform", c.platform);
     if (c.langs && c.langs.length) {
       def(navigator, "languages", Object.freeze(c.langs.slice()));
@@ -253,6 +290,36 @@ function fpSpoof(c) {
         return o;
       };
     }
+
+    // Client hints JS (navigator.userAgentData) : c'est ici que le vrai OS
+    // fuyait dans une extension "UA only". On remplace l'objet entier.
+    if (c.uaData) {
+      const u = c.uaData;
+      const high = {
+        architecture: u.architecture,
+        bitness: u.bitness,
+        brands: u.brands,
+        fullVersionList: u.fullVersionList,
+        mobile: u.mobile,
+        model: u.model,
+        platform: u.platform,
+        platformVersion: u.platformVersion,
+        uaFullVersion: u.uaFullVersion,
+        wow64: u.wow64
+      };
+      const fake = {
+        brands: u.brands,
+        mobile: u.mobile,
+        platform: u.platform,
+        getHighEntropyValues: (hints) => Promise.resolve((() => {
+          const r = { brands: u.brands, mobile: u.mobile, platform: u.platform };
+          (hints || []).forEach(h => { if (h in high) r[h] = high[h]; });
+          return r;
+        })()),
+        toJSON: () => ({ brands: u.brands, mobile: u.mobile, platform: u.platform })
+      };
+      def(navigator, "userAgentData", fake);
+    }
   } catch (e) { /* non bloquant */ }
 }
 
@@ -267,13 +334,12 @@ function updateFpScript(on) {
 }
 
 async function onNavCommitted(d) {
-  let host;
-  try { host = new URL(d.url).hostname; } catch (e) { return; }
   if (!(await isTargetHost(d.url))) return;
 
   const cfg = await getConfig();
   if (!cfg.alignFingerprint || cfg.suspended) return;
 
+  const brands = parseBrands(cfg.fpSecChUa);
   try {
     await chrome.scripting.executeScript({
       target: { tabId: d.tabId, frameIds: [d.frameId] },
@@ -286,7 +352,19 @@ async function onNavCommitted(d) {
         langs: String(cfg.fpLanguages || "").split(",").map(s => s.trim()).filter(Boolean),
         tz: cfg.fpTimezone,
         sw: Number(cfg.fpScreenW) || 0,
-        sh: Number(cfg.fpScreenH) || 0
+        sh: Number(cfg.fpScreenH) || 0,
+        uaData: {
+          brands,
+          mobile: cfg.fpSecChUaMobile === "?1",
+          platform: cfg.fpUaPlatform,
+          platformVersion: cfg.fpPlatformVersion,
+          uaFullVersion: cfg.fpUaFullVersion,
+          fullVersionList: brands.map(b => ({ brand: b.brand, version: cfg.fpUaFullVersion })),
+          architecture: cfg.fpArch,
+          bitness: cfg.fpBitness,
+          model: "",
+          wow64: false
+        }
       }]
     });
   } catch (e) { /* CSP stricte ou onglet ferme : non bloquant */ }
@@ -299,8 +377,6 @@ async function testConnection() {
   if (!cfg.username || !cfg.password) {
     return { ok: false, error: "Identifiants non renseignes." };
   }
-  // Le test necessite le routage actif : on l'applique explicitement
-  // (utile quand on sort d'une suspension).
   await chrome.proxy.settings.set({
     value: { mode: "pac_script", pacScript: { data: buildPacScript(cfg) } },
     scope: "regular"
@@ -309,22 +385,13 @@ async function testConnection() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const resp = await fetch(DIAG_URL, {
-      cache: "no-store",
-      credentials: "omit",
-      signal: controller.signal
-    });
+    const resp = await fetch(DIAG_URL, { cache: "no-store", credentials: "omit", signal: controller.signal });
     if (!resp.ok) {
       return { ok: false, error: `Reponse inattendue du diagnostic (HTTP ${resp.status}).` };
     }
     const data = await resp.json();
     const geo = data.providers?.maxmind || data.providers?.ip2location || {};
-    return {
-      ok: true,
-      ip: data.ip || "inconnue",
-      org: geo.org_name || "",
-      city: geo.city || ""
-    };
+    return { ok: true, ip: data.ip || "inconnue", org: geo.org_name || "", city: geo.city || "" };
   } catch (e) {
     const aborted = e && e.name === "AbortError";
     return {
@@ -335,7 +402,6 @@ async function testConnection() {
     };
   } finally {
     clearTimeout(timer);
-    // Si on etait suspendu et que le test echoue, on re-coupe.
     const after = await getConfig();
     if (after.suspended) {
       const res = await chrome.proxy.settings.get({});
@@ -348,16 +414,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "test-connection") {
     testConnection().then(async result => {
       if (result.ok) {
-        // Test reussi : levee de la suspension eventuelle.
         await chrome.storage.local.set({ suspended: false });
         failTimestamps = [];
       } else {
-        // Test rate : si on etait suspendu, on le reste (proxy re-coupe).
         await applyFromStorage();
       }
       sendResponse(result);
     });
-    return true; // reponse asynchrone
+    return true;
   }
   if (msg && msg.type === "get-status") {
     getConfig().then(cfg => {

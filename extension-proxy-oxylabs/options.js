@@ -6,9 +6,15 @@ const DEFAULTS = {
   domains: ["hellowork.com"],
 
   alignFingerprint: false,
-  fpUserAgent: "",
+  fpUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   fpAcceptLanguage: "fr-FR,fr;q=0.9",
+  fpSecChUa: '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+  fpSecChUaMobile: "?0",
   fpUaPlatform: "Windows",
+  fpPlatformVersion: "10.0.0",
+  fpUaFullVersion: "126.0.0.0",
+  fpArch: "x86",
+  fpBitness: "64",
   fpLanguages: "fr-FR,fr",
   fpPlatform: "Win32",
   fpTimezone: "Europe/Paris",
@@ -33,7 +39,13 @@ async function restore() {
   $("alignFingerprint").checked = !!cfg.alignFingerprint;
   $("fpUserAgent").value = cfg.fpUserAgent;
   $("fpAcceptLanguage").value = cfg.fpAcceptLanguage;
+  $("fpSecChUa").value = cfg.fpSecChUa;
+  $("fpSecChUaMobile").value = cfg.fpSecChUaMobile;
   $("fpUaPlatform").value = cfg.fpUaPlatform;
+  $("fpPlatformVersion").value = cfg.fpPlatformVersion;
+  $("fpUaFullVersion").value = cfg.fpUaFullVersion;
+  $("fpArch").value = cfg.fpArch;
+  $("fpBitness").value = cfg.fpBitness;
   $("fpLanguages").value = cfg.fpLanguages;
   $("fpPlatform").value = cfg.fpPlatform;
   $("fpTimezone").value = cfg.fpTimezone;
@@ -62,9 +74,15 @@ async function saveAndTest() {
     domains: domains.length ? domains : DEFAULTS.domains,
 
     alignFingerprint: $("alignFingerprint").checked,
-    fpUserAgent: $("fpUserAgent").value.trim(),
+    fpUserAgent: $("fpUserAgent").value.trim() || DEFAULTS.fpUserAgent,
     fpAcceptLanguage: $("fpAcceptLanguage").value.trim() || DEFAULTS.fpAcceptLanguage,
+    fpSecChUa: $("fpSecChUa").value.trim() || DEFAULTS.fpSecChUa,
+    fpSecChUaMobile: $("fpSecChUaMobile").value.trim() || DEFAULTS.fpSecChUaMobile,
     fpUaPlatform: $("fpUaPlatform").value.trim() || DEFAULTS.fpUaPlatform,
+    fpPlatformVersion: $("fpPlatformVersion").value.trim() || DEFAULTS.fpPlatformVersion,
+    fpUaFullVersion: $("fpUaFullVersion").value.trim() || DEFAULTS.fpUaFullVersion,
+    fpArch: $("fpArch").value.trim() || DEFAULTS.fpArch,
+    fpBitness: $("fpBitness").value.trim() || DEFAULTS.fpBitness,
     fpLanguages: $("fpLanguages").value.trim() || DEFAULTS.fpLanguages,
     fpPlatform: $("fpPlatform").value.trim() || DEFAULTS.fpPlatform,
     fpTimezone: $("fpTimezone").value.trim() || DEFAULTS.fpTimezone,

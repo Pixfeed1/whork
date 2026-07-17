@@ -104,8 +104,7 @@
     </div>
     <fieldset id="fpFields">
       <label for="fpUserAgent">User-Agent</label>
-      <input id="fpUserAgent" type="text" spellcheck="false"
-        placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/xxx Safari/537.36">
+      <input id="fpUserAgent" type="text" spellcheck="false">
       <div class="row">
         <div>
           <label for="fpLanguages">navigator.languages</label>
@@ -114,16 +113,6 @@
         <div>
           <label for="fpAcceptLanguage">En-tete Accept-Language</label>
           <input id="fpAcceptLanguage" type="text" spellcheck="false" placeholder="fr-FR,fr;q=0.9">
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label for="fpPlatform">navigator.platform</label>
-          <input id="fpPlatform" type="text" spellcheck="false" placeholder="Win32">
-        </div>
-        <div>
-          <label for="fpUaPlatform">Sec-CH-UA-Platform</label>
-          <input id="fpUaPlatform" type="text" spellcheck="false" placeholder="Windows">
         </div>
       </div>
       <div class="row">
@@ -138,6 +127,46 @@
         <div>
           <label for="fpScreenH">Ecran H</label>
           <input id="fpScreenH" type="number" min="0" placeholder="1080">
+        </div>
+      </div>
+
+      <h2 style="border:none;padding-top:8px;margin-top:20px;">Client hints (coherence UA — avance)</h2>
+      <p class="hint" style="margin-bottom:8px;">Deja coherent par defaut. Ne modifier qu'en bloc, pour tout le groupe a l'identique. C'est ce qui empeche le vrai OS de fuiter via <code>navigator.userAgentData</code>.</p>
+      <label for="fpSecChUa">Sec-CH-UA (liste des marques)</label>
+      <input id="fpSecChUa" type="text" spellcheck="false"
+        placeholder='"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"'>
+      <div class="row">
+        <div>
+          <label for="fpUaPlatform">Plateforme (Sec-CH-UA-Platform)</label>
+          <input id="fpUaPlatform" type="text" spellcheck="false" placeholder="Windows">
+        </div>
+        <div>
+          <label for="fpPlatformVersion">Version plateforme</label>
+          <input id="fpPlatformVersion" type="text" spellcheck="false" placeholder="10.0.0">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="fpUaFullVersion">Version complete Chrome</label>
+          <input id="fpUaFullVersion" type="text" spellcheck="false" placeholder="126.0.0.0">
+        </div>
+        <div>
+          <label for="fpPlatform">navigator.platform</label>
+          <input id="fpPlatform" type="text" spellcheck="false" placeholder="Win32">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="fpArch">Architecture</label>
+          <input id="fpArch" type="text" spellcheck="false" placeholder="x86">
+        </div>
+        <div>
+          <label for="fpBitness">Bitness</label>
+          <input id="fpBitness" type="text" spellcheck="false" placeholder="64">
+        </div>
+        <div>
+          <label for="fpSecChUaMobile">Mobile</label>
+          <input id="fpSecChUaMobile" type="text" spellcheck="false" placeholder="?0">
         </div>
       </div>
       <small>Limite : canvas / WebGL / polices ne sont pas couverts par une extension. Si la plateforme fingerprinte a ce niveau, il faut un navigateur anti-detection (GoLogin) ou serveur.</small>
