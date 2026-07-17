@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Proxy Selectif Oxylabs",
+  "version": "1.2.0",
+  "description": "Route les domaines cibles via une IP fixe Oxylabs partagee par groupe, avec auth transparente et alignement de fingerprint optionnel. Navigation directe partout ailleurs.",
+  "minimum_chrome_version": "108",
+  "permissions": [
+    "proxy",
+    "storage",
+    "webRequest",
+    "webRequestAuthProvider",
+    "notifications",
+    "scripting",
+    "declarativeNetRequest",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icon128.png"
+    }
+  }
+}

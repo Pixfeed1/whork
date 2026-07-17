@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Proxy Selectif Oxylabs : configuration</title>
+  <style>
+    :root {
+      --ink: #1d2430;
+      --muted: #5b6472;
+      --line: #d8dde4;
+      --accent: #0f5fbe;
+      --ok: #1a7f4b;
+      --bg: #f6f7f9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      margin: 0;
+      padding: 40px 16px;
+      display: flex;
+      justify-content: center;
+    }
+    main {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 520px;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    h2 { font-size: 14px; margin: 28px 0 4px; padding-top: 20px; border-top: 1px solid var(--line); }
+    p.hint { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+    input, textarea {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 64px; font-family: ui-monospace, monospace; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    small { color: var(--muted); display: block; margin-top: 4px; }
+    .toggle { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; font-weight: 600; font-size: 13px; }
+    .toggle input { width: auto; }
+    fieldset { border: none; padding: 0; margin: 0; }
+    fieldset[disabled] { opacity: .5; }
+    button {
+      margin-top: 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.08); }
+    #status { margin-left: 12px; font-size: 13px; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.ko { color: #b3261e; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Proxy Selectif Oxylabs</h1>
+    <p class="hint">Le proxy ne s'applique qu'aux domaines listes ci-dessous. Le reste de la navigation utilise votre connexion normale.</p>
+
+    <label for="username">Identifiant Oxylabs du groupe</label>
+    <input id="username" type="text" autocomplete="off" spellcheck="false"
+      placeholder="customer-XXXX-cc-FR-city-paris-sessid-GROUPE01-sesstime-1440">
+    <small>Utilisez l'identifiant avec sessid propre au groupe pour partager la meme IP.</small>
+
+    <label for="password">Mot de passe</label>
+    <input id="password" type="password" autocomplete="off">
+
+    <div class="row">
+      <div>
+        <label for="proxyHost">Serveur proxy</label>
+        <input id="proxyHost" type="text" spellcheck="false">
+      </div>
+      <div>
+        <label for="proxyPort">Port</label>
+        <input id="proxyPort" type="number" min="1" max="65535">
+      </div>
+    </div>
+
+    <label for="domains">Domaines cibles (un par ligne)</label>
+    <textarea id="domains" spellcheck="false"></textarea>
+    <small>Les sous-domaines sont inclus automatiquement (hellowork.com couvre www, cdn, etc.).</small>
+
+    <h2>Alignement du fingerprint (groupe)</h2>
+    <p class="hint">Facultatif. A n'activer que si la plateforme detecte encore apres avoir unifie l'IP. Applique les memes valeurs a tout le groupe, sur les domaines cibles uniquement.</p>
+    <div class="toggle">
+      <input id="alignFingerprint" type="checkbox">
+      <label for="alignFingerprint" style="margin:0;">Aligner le fingerprint du groupe</label>
+    </div>
+    <fieldset id="fpFields">
+      <label for="fpUserAgent">User-Agent</label>
+      <input id="fpUserAgent" type="text" spellcheck="false"
+        placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/xxx Safari/537.36">
+      <div class="row">
+        <div>
+          <label for="fpLanguages">navigator.languages</label>
+          <input id="fpLanguages" type="text" spellcheck="false" placeholder="fr-FR,fr">
+        </div>
+        <div>
+          <label for="fpAcceptLanguage">En-tete Accept-Language</label>
+          <input id="fpAcceptLanguage" type="text" spellcheck="false" placeholder="fr-FR,fr;q=0.9">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="fpPlatform">navigator.platform</label>
+          <input id="fpPlatform" type="text" spellcheck="false" placeholder="Win32">
+        </div>
+        <div>
+          <label for="fpUaPlatform">Sec-CH-UA-Platform</label>
+          <input id="fpUaPlatform" type="text" spellcheck="false" placeholder="Windows">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="fpTimezone">Timezone</label>
+          <input id="fpTimezone" type="text" spellcheck="false" placeholder="Europe/Paris">
+        </div>
+        <div>
+          <label for="fpScreenW">Ecran L</label>
+          <input id="fpScreenW" type="number" min="0" placeholder="1920">
+        </div>
+        <div>
+          <label for="fpScreenH">Ecran H</label>
+          <input id="fpScreenH" type="number" min="0" placeholder="1080">
+        </div>
+      </div>
+      <small>Limite : canvas / WebGL / polices ne sont pas couverts par une extension. Si la plateforme fingerprinte a ce niveau, il faut un navigateur anti-detection (GoLogin) ou serveur.</small>
+    </fieldset>
+
+    <button id="save">Enregistrer et tester</button>
+    <span id="status"></span>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>
