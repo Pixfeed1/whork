@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Generer un code de groupe — Proxy Selectif Oxylabs</title>
+  <style>
+    :root { --ink:#1d2430; --muted:#5b6472; --line:#d8dde4; --accent:#0f5fbe; --ok:#1a7f4b; --bg:#f6f7f9; }
+    * { box-sizing: border-box; }
+    body { font-family:-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); margin:0; padding:40px 16px; display:flex; justify-content:center; }
+    main { background:#fff; border:1px solid var(--line); border-radius:10px; padding:28px 32px; width:100%; max-width:560px; }
+    h1 { font-size:18px; margin:0 0 4px; }
+    h2 { font-size:14px; margin:24px 0 4px; padding-top:18px; border-top:1px solid var(--line); }
+    p.hint { color:var(--muted); font-size:13px; margin:0 0 20px; }
+    label { display:block; font-size:13px; font-weight:600; margin:14px 0 6px; }
+    input, textarea { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:6px; font-size:14px; font-family:inherit; }
+    textarea { resize:vertical; font-family:ui-monospace,monospace; }
+    .row { display:flex; gap:12px; } .row > div { flex:1; }
+    small { color:var(--muted); display:block; margin-top:4px; }
+    button { margin-top:20px; background:var(--accent); color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:14px; font-weight:600; cursor:pointer; }
+    button:hover { filter:brightness(1.08); }
+    #out { margin-top:16px; }
+    #code { min-height:90px; background:#f2f6fc; }
+    #copyStatus { font-size:13px; color:var(--ok); margin-left:10px; }
+    details summary { cursor:pointer; font-size:13px; color:var(--muted); margin-top:8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Generer un code de groupe</h1>
+    <p class="hint">Reserve a l'admin. Renseigne les infos du groupe, genere le code, et distribue-le aux consultants : ils n'auront qu'a le coller dans l'extension.</p>
+
+    <label for="username">Identifiant Oxylabs (avec le sessid du groupe)</label>
+    <input id="username" type="text" spellcheck="false" placeholder="customer-XXXX-cc-FR-city-paris-sessid-GROUPE01-sesstime-1440">
+    <label for="password">Mot de passe Oxylabs</label>
+    <input id="password" type="text" spellcheck="false">
+    <small>Il sera inclus dans le code : traite ce code comme un secret (a partager en prive).</small>
+
+    <div class="row">
+      <div>
+        <label for="proxyHost">Serveur proxy</label>
+        <input id="proxyHost" type="text" spellcheck="false" value="pr.oxylabs.io">
+      </div>
+      <div>
+        <label for="proxyPort">Port</label>
+        <input id="proxyPort" type="number" min="1" max="65535" value="7777">
+      </div>
+    </div>
+
+    <label for="domains">Domaines cibles (un par ligne)</label>
+    <textarea id="domains" spellcheck="false">hellowork.com</textarea>
+
+    <h2>Fingerprint du groupe</h2>
+    <label class="toggle" style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;">
+      <input id="alignFingerprint" type="checkbox" style="width:auto;"> Inclure l'alignement du fingerprint (memes valeurs pour tous)
+    </label>
+    <details>
+      <summary>Profil fingerprint (deja coherent — modifier en bloc si besoin)</summary>
+      <label for="fpUserAgent">User-Agent</label>
+      <input id="fpUserAgent" type="text" spellcheck="false">
+      <div class="row">
+        <div><label for="fpLanguages">navigator.languages</label><input id="fpLanguages" type="text" spellcheck="false"></div>
+        <div><label for="fpAcceptLanguage">Accept-Language</label><input id="fpAcceptLanguage" type="text" spellcheck="false"></div>
+      </div>
+      <label for="fpSecChUa">Sec-CH-UA</label>
+      <input id="fpSecChUa" type="text" spellcheck="false">
+      <div class="row">
+        <div><label for="fpUaPlatform">Plateforme</label><input id="fpUaPlatform" type="text" spellcheck="false"></div>
+        <div><label for="fpPlatformVersion">Version plateforme</label><input id="fpPlatformVersion" type="text" spellcheck="false"></div>
+      </div>
+      <div class="row">
+        <div><label for="fpUaFullVersion">Version Chrome complete</label><input id="fpUaFullVersion" type="text" spellcheck="false"></div>
+        <div><label for="fpPlatform">navigator.platform</label><input id="fpPlatform" type="text" spellcheck="false"></div>
+      </div>
+      <div class="row">
+        <div><label for="fpArch">Arch</label><input id="fpArch" type="text" spellcheck="false"></div>
+        <div><label for="fpBitness">Bitness</label><input id="fpBitness" type="text" spellcheck="false"></div>
+        <div><label for="fpSecChUaMobile">Mobile</label><input id="fpSecChUaMobile" type="text" spellcheck="false"></div>
+      </div>
+      <div class="row">
+        <div><label for="fpTimezone">Timezone</label><input id="fpTimezone" type="text" spellcheck="false"></div>
+        <div><label for="fpScreenW">Ecran L</label><input id="fpScreenW" type="number" min="0"></div>
+        <div><label for="fpScreenH">Ecran H</label><input id="fpScreenH" type="number" min="0"></div>
+      </div>
+    </details>
+
+    <button id="gen" type="button">Generer le code</button>
+
+    <div id="out">
+      <label for="code">Code a distribuer</label>
+      <textarea id="code" readonly spellcheck="false" placeholder="Le code apparaitra ici."></textarea>
+      <button id="copy" type="button">Copier</button><span id="copyStatus"></span>
+    </div>
+  </main>
+  <script src="generate-code.js"></script>
+</body>
+</html>

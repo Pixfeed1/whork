@@ -24,6 +24,28 @@ const DEFAULTS = {
 
 const $ = (id) => document.getElementById(id);
 
+// --- Codec du "code de groupe" (partage avec generate-code.js) --------------
+function b64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+function decodeCode(code) {
+  code = String(code).trim();
+  if (!code.startsWith("OXY1:")) throw new Error("prefixe manquant");
+  const obj = JSON.parse(b64urlDecode(code.slice(5)));
+  if (!obj || typeof obj !== "object") throw new Error("contenu illisible");
+  return obj;
+}
+
 function syncFpDisabled() {
   $("fpFields").disabled = !$("alignFingerprint").checked;
 }
@@ -104,6 +126,50 @@ async function saveAndTest() {
   btn.disabled = false;
 }
 
+async function applyCode() {
+  const status = $("codeStatus");
+  status.className = "";
+  status.textContent = "";
+
+  let obj;
+  try {
+    obj = decodeCode($("groupCode").value);
+  } catch (e) {
+    status.className = "ko";
+    status.textContent = "Code invalide.";
+    return;
+  }
+
+  // On n'accepte que les cles connues, jamais n'importe quoi venant du code.
+  const toSet = { suspended: false };
+  for (const k of Object.keys(DEFAULTS)) {
+    if (k in obj) toSet[k] = obj[k];
+  }
+  if (typeof toSet.domains === "string") {
+    toSet.domains = toSet.domains.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  await chrome.storage.local.set(toSet);
+  await restore();
+
+  status.className = "ok";
+  status.textContent = "Code applique, test en cours...";
+  const r = await chrome.runtime.sendMessage({ type: "test-connection" });
+  if (r && r.ok) {
+    const loc = [r.city, r.org].filter(Boolean).join(", ");
+    status.className = "ok";
+    status.textContent = `Pret. IP du groupe : ${r.ip}${loc ? " (" + loc + ")" : ""}`;
+  } else {
+    status.className = "ko";
+    status.textContent = `Applique, mais test KO : ${(r && r.error) || "verifiez le code."}`;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", restore);
 $("alignFingerprint").addEventListener("change", syncFpDisabled);
 $("save").addEventListener("click", saveAndTest);
+$("applyCode").addEventListener("click", applyCode);
+$("openGen").addEventListener("click", (e) => {
+  e.preventDefault();
+  window.open(chrome.runtime.getURL("generate-code.html"), "_blank");
+});

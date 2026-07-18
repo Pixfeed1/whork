@@ -1,4 +1,4 @@
-# Proxy Selectif Oxylabs — v1.2.1
+# Proxy Selectif Oxylabs — v1.3.0
 
 Extension Chrome (MV3) qui fait apparaitre tout un groupe de consultants avec la
 **meme IP fixe Oxylabs** sur des domaines cibles (ex. `hellowork.com`), pour
@@ -20,6 +20,23 @@ Orbita, sans serveur / VPS** (donc compatible avec un hebergement mutualise).
   getHighEntropyValues) / langues / timezone / ecran au niveau JS. Le vrai OS
   ne fuit donc plus via `navigator.userAgentData` (trou classique des
   extensions "UA only"). Un profil coherent Windows/Chrome est pre-rempli.
+
+## Zero-config : le "code de groupe" (v1.3.0)
+
+Pour que le consultant n'ait **rien a taper** :
+
+1. **Admin** : ouvrir l'extension → Configuration → « Generer un code de groupe
+   (admin) ». Renseigner identifiant Oxylabs (avec le sessid du groupe), mot de
+   passe, domaines, (option) fingerprint → **Generer le code** → copier.
+2. **Consultant** : ouvrir l'extension → coller le code dans « Code de groupe »
+   → **Appliquer le code**. Tout se remplit et se teste automatiquement.
+
+Le code (`OXY1:...`) contient toute la config, **mot de passe inclus** : il se
+traite comme un secret, a partager en prive. Un nouveau code = rotation
+immediate (il suffit de le redistribuer).
+
+Ce code ne change **rien** a la facon de travailler : il remplace juste la
+saisie manuelle des reglages. La navigation reste identique.
 
 ## Strategie recommandee (du moins cher au plus cher)
 

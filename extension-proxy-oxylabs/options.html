@@ -73,6 +73,21 @@
     <h1>Proxy Selectif Oxylabs</h1>
     <p class="hint">Le proxy ne s'applique qu'aux domaines listes ci-dessous. Le reste de la navigation utilise votre connexion normale.</p>
 
+    <div style="background:#eef4fc;border:1px solid #cfe0f5;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <label for="groupCode" style="margin-top:0;">Code de groupe</label>
+      <textarea id="groupCode" spellcheck="false" placeholder="OXY1:... (colle ici le code fourni par ton admin)"></textarea>
+      <small>Un seul geste : colle le code, tout se remplit et se teste automatiquement. Rien d'autre a saisir.</small>
+      <button id="applyCode" type="button" style="margin-top:12px;">Appliquer le code</button>
+      <span id="codeStatus"></span>
+    </div>
+
+    <details style="margin-bottom:20px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--muted);">Configuration manuelle (avance / admin)</summary>
+      <p class="hint" style="margin:12px 0 0;">
+        <a href="#" id="openGen">Generer un code de groupe (admin) &rarr;</a>
+      </p>
+    </details>
+
     <label for="username">Identifiant Oxylabs du groupe</label>
     <input id="username" type="text" autocomplete="off" spellcheck="false"
       placeholder="customer-XXXX-cc-FR-city-paris-sessid-GROUPE01-sesstime-1440">
