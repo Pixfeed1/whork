@@ -24,25 +24,29 @@ Ce guide explique **tout**, pas à pas. Il y a deux rôles :
 3. Clique **« Générer un code de groupe (admin) → »**. Un nouvel onglet s'ouvre.
 
 ### Étape 3 — Remplir et générer
-Dans le générateur, renseigne :
+Dans le générateur, renseigne (cas **ISP dédié** — une IP fixe par port) :
 
 | Champ | Quoi mettre |
 |---|---|
-| **Identifiant Oxylabs** | ton identifiant AVEC le sessid du groupe (voir encadré ci-dessous) |
-| **Mot de passe Oxylabs** | le mot de passe du proxy |
-| **Serveur proxy** | `pr.oxylabs.io` (déjà pré-rempli) |
-| **Port** | `7777` (déjà pré-rempli) |
+| **Identifiant Oxylabs** | `customer-<TON_USERNAME_ISP>` (le préfixe `customer-` est obligatoire) |
+| **Mot de passe Oxylabs** | le mot de passe de l'utilisateur ISP (dashboard → ISP Proxies → Users → Change password) |
+| **Serveur proxy** | `isp.oxylabs.io` |
+| **Port** | le port du groupe (voir encadré ci-dessous) |
 | **Domaines cibles** | `hellowork.com` (déjà pré-rempli) |
-| **Alignement fingerprint** | à cocher SEULEMENT si tu veux l'activer (par défaut : laisse décoché) |
+| **Alignement fingerprint** | à cocher SEULEMENT si besoin (par défaut : laisse décoché) |
 
 Puis clique **« Générer le code »** → un code `OXY1:...` apparaît → clique **« Copier »**.
 
-> ### 🔑 Le point le plus important : le `sessid`
-> C'est le `sessid` qui fait que tout le monde a **la même IP**.
-> - **Même sessid = même IP de sortie.**
-> - Exemple d'identifiant : `customer-TONCOMPTE-cc-FR-city-paris-sessid-GROUPE01-sesstime-1440`
-> - Ici `GROUPE01` est le sessid du groupe. Tous les consultants qui utilisent ce code sortiront sur la même IP.
-> - Un autre groupe = un autre sessid (ex. `GROUPE02`) = un autre code.
+> ### 🔑 Le point le plus important : le PORT = l'IP
+> Avec les proxies **ISP dédiés**, chaque port correspond à **une IP fixe**.
+> Pour qu'un groupe partage la même IP, tous ses membres utilisent **le même port**.
+>
+> - Groupe 1 → port `8001` → tous sortent sur la même IP fixe
+> - Groupe 2 → port `8002` → une autre IP fixe
+> - etc.
+>
+> La liste port ↔ IP se trouve dans : dashboard Oxylabs → **ISP Proxies → Proxy list**.
+> (Pas besoin de `sessid` ni de `cc-FR` : l'IP est déjà fixée par le port.)
 
 ### Étape 4 — Distribuer
 Envoie le code `OXY1:...` **en privé** à chaque consultant du groupe (un seul code pour tout le groupe).
