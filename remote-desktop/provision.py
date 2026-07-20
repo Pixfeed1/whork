@@ -40,6 +40,7 @@ for name, l in sorted(lics.items()):
 
 # --- un poste par consultant (via le proxy de sa licence) ---
 routes = []
+seat_vols = []
 for login, c in sorted(cons.items()):
     lic = c.get("license")
     if lic not in lics:
@@ -57,6 +58,8 @@ for login, c in sorted(cons.items()):
     shm_size: "1gb"
     restart: unless-stopped
     networks: [interne]
+    volumes:
+      - seat-%d-data:/config
     environment:
       - PUID=1000
       - PGID=1000
@@ -64,14 +67,18 @@ for login, c in sorted(cons.items()):
       - LC_ALL=fr_FR.UTF-8
       - TITLE=Sourcing
       - CHROME_CLI=--proxy-server=http://%s:8080 --lang=fr-FR --start-maximized https://www.hellowork.com/
-""" % (seat, pname, pname))
+""" % (seat, pname, seat, pname))
     routes.append("\t\thandle_path /s%d/* { reverse_proxy seat-%d:3000 }" % (seat, seat))
+    seat_vols.append(seat)
 
 # --- ecriture override ---
 if blocks:
     override = "# Genere a partir de config.json. NE PAS editer.\nservices:\n" + "".join(blocks)
 else:
     override = "# Genere a partir de config.json. Aucune licence/consultant.\nservices: {}\n"
+# Volumes persistants : chaque poste garde sa session hellowork (cookies/login).
+if seat_vols:
+    override += "\nvolumes:\n" + "".join("  seat-%d-data:\n" % s for s in seat_vols)
 with open(os.path.join(BASE, "docker-compose.override.yml"), "w") as f:
     f.write(override)
 

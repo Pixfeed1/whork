@@ -159,12 +159,13 @@ def admin_page(cfg, msg="", err=""):
     lic_rows = ""
     for name in sorted(lic):
         n = sum(1 for r in cons.values() if r.get("license") == name)
-        lic_rows += """<tr><td><b>%s</b></td><td>port %s</td><td>%d consultant(s)</td>
+        hw = lic[name].get("hw_email") or '<span style="color:var(--muted);">non renseigne</span>'
+        lic_rows += """<tr><td><b>%s</b></td><td>port %s</td><td>%s</td><td>%d consultant(s)</td>
 <td style="text-align:right;"><form method="post" action="/admin/lic-del" onsubmit="return confirm('Supprimer la licence %s ?');" style="margin:0;">
 <input type="hidden" name="name" value="%s"><button class="danger" type="submit">Supprimer</button></form></td></tr>""" % (
-            html.escape(name), lic[name].get("port", "?"), n, html.escape(name), html.escape(name))
+            html.escape(name), lic[name].get("port", "?"), (html.escape(lic[name]["hw_email"]) if lic[name].get("hw_email") else hw), n, html.escape(name), html.escape(name))
     if not lic_rows:
-        lic_rows = '<tr><td colspan="4" style="color:var(--muted);">Aucune licence. Ajoute-en une ci-dessus.</td></tr>'
+        lic_rows = '<tr><td colspan="5" style="color:var(--muted);">Aucune licence. Ajoute-en une ci-dessus.</td></tr>'
 
     options = "".join('<option value="%s">%s (port %s)</option>' % (html.escape(n), html.escape(n), lic[n].get("port", "?")) for n in sorted(lic))
 
@@ -208,8 +209,12 @@ def admin_page(cfg, msg="", err=""):
         <div><label>Port Oxylabs <span class="tip">i<span class="bub">Le port depuis ton dashboard Oxylabs (ISP Proxies, Proxy list). Chaque port = une IP fixe. Ex: 8001 = 31.98.21.135.</span></span></label><input name="port" type="number" min="1" max="65535" placeholder="8001" required></div>
         <div class="fit"><button type="submit">Ajouter</button></div>
       </div>
+      <div class="row2" style="margin-top:6px;">
+        <div><label>Compte hellowork (email) <span class="tip">i<span class="bub">Le compte hellowork partage de cette licence. Sert de reference ; la connexion se fait une fois dans le poste puis reste memorisee.</span></span></label><input name="hw_email" type="text" placeholder="compte@exemple.com"></div>
+        <div><label>Mot de passe hellowork</label><input name="hw_password" type="text" placeholder="(optionnel)"></div>
+      </div>
     </form>
-    <table style="margin-top:14px;"><thead><tr><th>Licence</th><th>Port</th><th>Consultants</th><th></th></tr></thead><tbody>%s</tbody></table>
+    <table style="margin-top:14px;"><thead><tr><th>Licence</th><th>Port</th><th>Compte hellowork</th><th>Consultants</th><th></th></tr></thead><tbody>%s</tbody></table>
   </div>
   <div class="panel">
     <h1 style="font-size:15px;margin:0 0 12px;">Ajouter un consultant <span class="tip">i<span class="bub">Chaque consultant a son propre navigateur (poste), sur l'IP de sa licence. Il se connecte avec ces identifiants. Son poste demarre tout seul en moins d'une minute.</span></span></h1>
@@ -316,7 +321,11 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, admin_page(cfg, err="Cette licence existe deja.")); return
             if not (port.isdigit() and 1 <= int(port) <= 65535):
                 self._send(200, admin_page(cfg, err="Port invalide.")); return
-            cfg["licenses"][name] = {"port": int(port)}
+            cfg["licenses"][name] = {
+                "port": int(port),
+                "hw_email": f.get("hw_email", [""])[0].strip(),
+                "hw_password": f.get("hw_password", [""])[0],
+            }
             save_cfg(cfg)
             self._redir("/admin")
 
