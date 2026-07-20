@@ -13,3 +13,4 @@ remote-desktop/Caddyfile
 remote-desktop/docker-compose.override.yml
 remote-desktop/config.json
 remote-desktop/status.json
+__pycache__/
