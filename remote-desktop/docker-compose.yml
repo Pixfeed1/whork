@@ -61,9 +61,10 @@ services:
     # (Apache) qui termine le HTTPS de talens.pixfeed.net et redirige ici.
     ports:
       - "127.0.0.1:8080:8080"
-    environment:
-      - PORTAL_USER=${PORTAL_USER}
-      - PORTAL_PASS_HASH=${PORTAL_PASS_HASH}
+    # env_file : les valeurs (dont le hash bcrypt avec ses "$") sont passees
+    # LITTERALEMENT au conteneur, sans interpolation docker-compose.
+    env_file:
+      - .env
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./portal:/srv/portal:ro
