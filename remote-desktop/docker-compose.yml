@@ -1,30 +1,22 @@
-# Base : proxy + auth (interface admin) + caddy.
-# Les POSTES (seat-N) sont dans docker-compose.override.yml, genere par
-# provision.py a partir de users.json (1 compte = 1 poste). Voir apply.sh.
+# Base : auth (interface admin) + caddy.
+# Les PROXYS (un par licence) et les POSTES (un par consultant) sont generes
+# dans docker-compose.override.yml par provision.py, a partir de config.json.
+# Voir apply.sh et la synchro systemd (deploy/talens-sync.*).
 
 services:
-  proxy-groupe1:
-    image: ginuerzh/gost:latest
-    # Auth Oxylabs par WHITELIST d'IP -> pas de mot de passe. Le PORT = l'IP fixe.
-    command: >
-      -L=http://:8080
-      -F=http://isp.oxylabs.io:${OXY_PORT_G1}
-    restart: unless-stopped
-    networks: [interne]
-
   auth:
     build: ./auth
     env_file:
       - .env
     volumes:
-      # rw : l'interface admin ecrit les comptes dans users.json.
-      - ./users.json:/app/users.json
+      # rw : l'interface admin ecrit licences + comptes dans config.json.
+      - ./config.json:/app/config.json
     restart: unless-stopped
     networks: [interne]
 
   caddy:
     image: caddy:2
-    depends_on: [auth, proxy-groupe1]
+    depends_on: [auth]
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

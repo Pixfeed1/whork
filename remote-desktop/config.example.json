@@ -1,0 +1,11 @@
+{
+  "licenses": {
+    "licence1": { "port": 8001 },
+    "licence2": { "port": 8002 }
+  },
+  "consultants": {
+    "jean":  { "password": "change-moi", "license": "licence1", "seat": 1 },
+    "marie": { "password": "change-moi", "license": "licence1", "seat": 2 },
+    "paul":  { "password": "change-moi", "license": "licence2", "seat": 3 }
+  }
+}

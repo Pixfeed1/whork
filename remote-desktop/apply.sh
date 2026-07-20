@@ -1,10 +1,10 @@
 #!/bin/sh
-# Synchronise les postes avec les comptes : (re)genere l'override + le Caddyfile
-# a partir de users.json, puis applique. Lance a la main ou par le sync systemd.
+# Synchronise proxys + postes avec config.json : (re)genere l'override et le
+# Caddyfile, puis applique. Lance a la main ou par le sync systemd.
 set -e
 cd "$(dirname "$0")"
 
-[ -f users.json ] || echo '{}' > users.json
+[ -f config.json ] || echo '{"licenses":{},"consultants":{}}' > config.json
 
 python3 provision.py
 docker compose up -d --remove-orphans

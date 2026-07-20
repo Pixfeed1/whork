@@ -11,3 +11,4 @@ remote-desktop/.env
 remote-desktop/users.json
 remote-desktop/Caddyfile
 remote-desktop/docker-compose.override.yml
+remote-desktop/config.json

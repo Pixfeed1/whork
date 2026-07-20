@@ -1,6 +1,0 @@
-{
-  "jean":   { "password": "change-moi", "seat": 1 },
-  "marie":  { "password": "change-moi", "seat": 2 },
-  "paul":   { "password": "change-moi", "seat": 3 },
-  "sophie": { "password": "change-moi", "seat": 4 }
-}
