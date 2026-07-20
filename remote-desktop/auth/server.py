@@ -10,7 +10,8 @@
 #
 # status.json (ecrit par apply.sh) : { "running": [1,2,...] } postes en marche.
 
-import os, json, hmac, hashlib, time, html, tempfile, re
+import os, json, hmac, hashlib, time, html, tempfile, re, secrets
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
@@ -25,6 +26,17 @@ COOKIE = "talens_session"
 NAME_RE = re.compile(r"^[a-zA-Z0-9._-]{2,32}$")
 PORT_BASE = int(os.environ.get("OXY_PORT_BASE", "8001"))
 PORT_MAX = int(os.environ.get("OXY_PORT_MAX", "8020"))
+ONDEMAND = os.environ.get("ONDEMAND", "0").strip() == "1"
+try:
+    IDLE_MINUTES = int(os.environ.get("IDLE_MINUTES", "5") or 5)
+except Exception:
+    IDLE_MINUTES = 5
+PORTAL_URL = os.environ.get("PORTAL_URL", "").strip().rstrip("/")
+ONLINE_WINDOW = 180  # secondes : un consultant "en ligne" a battu il y a moins de 3 min.
+
+
+def safe(name):
+    return re.sub(r"[^a-z0-9]", "-", str(name).lower()).strip("-") or "x"
 
 
 def load_cfg():
@@ -52,6 +64,39 @@ def running_seats():
             return set(int(x) for x in json.load(f).get("running", []))
     except Exception:
         return set()
+
+
+def load_activity():
+    try:
+        with open(ACTIVITY_PATH) as f:
+            a = json.load(f)
+        return a if isinstance(a, dict) else {}
+    except Exception:
+        return {}
+
+
+def online_seats():
+    now = time.time()
+    out = set()
+    for s, ts in load_activity().items():
+        try:
+            if now - float(ts) < ONLINE_WINDOW:
+                out.add(int(s))
+        except Exception:
+            pass
+    return out
+
+
+def proxy_exit_ip(license_name, timeout=8):
+    # Verifie l'IP de sortie d'une licence en passant par son proxy gost interne.
+    # Sert au bouton "Tester l'IP" (aucun compte hellowork requis).
+    px = "http://proxy-%s:8080" % safe(license_name)
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": px, "https": px}))
+    req = urllib.request.Request("http://api.ipify.org/",
+                                 headers={"User-Agent": "talens-check"})
+    with opener.open(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace").strip()
 
 
 def touch_seat(seat):
@@ -192,6 +237,18 @@ details>summary{cursor:pointer;font-weight:600;font-size:13.5px;list-style:none;
 details>summary::-webkit-details-marker{display:none;}
 details>summary::before{content:"\\25B8";margin-right:7px;color:var(--muted);}
 details[open]>summary::before{content:"\\25BE";}
+.item{border:1px solid var(--line);border-radius:var(--radius-s);margin-top:8px;background:var(--surface);}
+.item>summary{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;list-style:none;font-size:14px;}
+.item>summary::-webkit-details-marker{display:none;}
+.item>summary::before{content:"\\25B8";color:var(--muted);margin:0;}
+.item[open]>summary::before{content:"\\25BE";}
+.item[open]>summary{border-bottom:1px solid var(--line2);}
+.item .meta{color:var(--muted);font-size:12.5px;font-weight:400;}
+.item .body{padding:14px;}
+.grow{flex:1 1 auto;}
+.mini{font-size:12px;padding:8px 12px;}
+textarea{width:100%%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-s);font-size:14px;font-family:inherit;background:var(--surface);color:var(--ink);min-height:96px;resize:vertical;}
+textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%%;background:var(--line);color:var(--muted);font-size:11px;font-weight:700;cursor:help;margin-left:6px;vertical-align:middle;font-style:normal;}
 .tip .bub{visibility:hidden;opacity:0;transition:opacity .15s;position:absolute;bottom:150%%;left:50%%;transform:translateX(-50%%);background:var(--ink);color:var(--surface);font-weight:400;font-size:12px;line-height:1.5;padding:10px 12px;border-radius:10px;width:250px;z-index:30;text-align:left;box-shadow:0 8px 26px rgba(0,0,0,.28);}
 .tip:hover .bub{visibility:visible;opacity:1;}
@@ -272,102 +329,139 @@ rl.addEventListener('click',function(){f.src='/s'+seat+'/?t='+Date.now();});
 def admin_page(cfg, run, msg="", err=""):
     lic = cfg["licenses"]
     cons = cfg["consultants"]
+    online = online_seats()
 
-    lic_rows = ""
+    def sel_options(selected=""):
+        return "".join(
+            '<option value="%s"%s>%s (port %s)</option>' % (
+                html.escape(x), " selected" if x == selected else "",
+                html.escape(x), lic[x].get("port", "?")) for x in sorted(lic))
+
+    # --- licences (cartes depliables) ---
+    lic_items = ""
     for name in sorted(lic):
+        L = lic[name]
+        e = html.escape(name)
         n = sum(1 for r in cons.values() if r.get("license") == name)
-        hw = html.escape(lic[name]["hw_email"]) if lic[name].get("hw_email") else '<span style="color:var(--muted);">non renseigne</span>'
-        lic_rows += """<tr><td><b>%s</b></td><td>port %s</td><td>%s</td><td>%d</td>
-<td style="text-align:right;"><form method="post" action="/admin/lic-del" onsubmit="return confirm('Supprimer la licence %s ?');" style="margin:0;">
-<input type="hidden" name="name" value="%s"><button class="danger" type="submit">Supprimer</button></form></td></tr>""" % (
-            html.escape(name), lic[name].get("port", "?"), hw, n, html.escape(name), html.escape(name))
-    if not lic_rows:
-        lic_rows = '<tr><td colspan="5" style="color:var(--muted);">Aucune licence. Commence par en creer une.</td></tr>'
+        iptxt = ("IP " + html.escape(L["ip"])) if L.get("ip") else "IP non testee"
+        hwtxt = html.escape(L["hw_email"]) if L.get("hw_email") else "hellowork non renseigne"
+        meta = "port %s &middot; %s &middot; %s &middot; %d consult." % (
+            L.get("port", "?"), iptxt, hwtxt, n)
+        lic_items += (
+            '<details class="item"><summary><b>' + e + '</b><span class="meta">' + meta + '</span></summary>'
+            '<div class="body">'
+            '<form method="post" action="/admin/lic-edit"><input type="hidden" name="name" value="' + e + '">'
+            '<div class="row2">'
+            '<div><label>Compte hellowork (email)</label><input name="hw_email" value="' + html.escape(L.get("hw_email", "")) + '" placeholder="compte@exemple.com"></div>'
+            '<div><label>Mot de passe hellowork</label><input name="hw_password" placeholder="(inchange si vide)"></div>'
+            '<div class="fit" style="min-width:110px;"><label>Port</label><input name="port" type="number" min="1" max="65535" value="' + str(L.get("port", "")) + '"></div>'
+            '<div class="fit"><button type="submit">Enregistrer</button></div>'
+            '</div></form>'
+            '<div class="row2" style="margin-top:12px;align-items:center;">'
+            '<form method="post" action="/admin/lic-test" style="margin:0;"><input type="hidden" name="name" value="' + e + '"><button class="mini" type="submit">Tester l\'IP de sortie</button></form>'
+            '<span class="grow"></span>'
+            '<form method="post" action="/admin/lic-del" onsubmit="return confirm(\'Supprimer la licence ' + e + ' ?\');" style="margin:0;"><input type="hidden" name="name" value="' + e + '"><button class="danger" type="submit">Supprimer</button></form>'
+            '</div></div></details>')
+    if not lic_items:
+        lic_items = '<p class="sub" style="margin:8px 0 0;">Aucune licence pour le moment.</p>'
 
-    options = "".join('<option value="%s">%s (port %s)</option>' % (html.escape(x), html.escape(x), lic[x].get("port", "?")) for x in sorted(lic))
-
-    cons_rows = ""
+    # --- consultants (cartes depliables) ---
+    cons_items = ""
     active = 0
     for name in sorted(cons):
         r = cons[name]
+        e = html.escape(name)
         seat = int(r.get("seat", 0))
-        up = seat in run
-        if up:
+        licn = r.get("license", "?")
+        if seat in run:
             active += 1
-        st = '<span class="pill ok"><span class="dot ok"></span>actif</span>' if up else '<span class="pill warn"><span class="dot warn"></span>demarrage…</span>'
-        cons_rows += """<tr><td><b>%s</b></td><td>%s</td><td>Poste %s</td><td>%s</td>
-<td style="text-align:right;"><form method="post" action="/admin/delete" onsubmit="return confirm('Supprimer %s ?');" style="margin:0;">
-<input type="hidden" name="username" value="%s"><button class="danger" type="submit">Supprimer</button></form></td></tr>""" % (
-            html.escape(name), html.escape(r.get("license", "?")), seat, st, html.escape(name), html.escape(name))
-    if not cons_rows:
-        cons_rows = '<tr><td colspan="5" style="color:var(--muted);">Aucun consultant.</td></tr>'
+        if seat in online:
+            st = '<span class="pill ok"><span class="dot ok"></span>en ligne</span>'
+        elif seat in run:
+            st = '<span class="pill"><span class="dot ok"></span>pret</span>'
+        elif ONDEMAND:
+            st = '<span class="pill warn"><span class="dot warn"></span>en veille</span>'
+        else:
+            st = '<span class="pill warn"><span class="dot warn"></span>demarrage&hellip;</span>'
+        cred = "Identifiant : %s\nMot de passe : %s" % (name, r.get("password", ""))
+        if PORTAL_URL:
+            cred += "\nLien : %s" % PORTAL_URL
+        cred_attr = html.escape(cred, quote=True).replace("\n", "&#10;")
+        cons_items += (
+            '<details class="item"><summary><b>' + e + '</b><span class="meta">' + html.escape(licn) + ' &middot; poste ' + str(seat) + '</span><span class="grow"></span>' + st + '</summary>'
+            '<div class="body">'
+            '<form method="post" action="/admin/edit"><input type="hidden" name="username" value="' + e + '">'
+            '<div class="row2">'
+            '<div><label>Nouveau mot de passe</label><input name="password" placeholder="(inchange si vide)"></div>'
+            '<div><label>Licence</label><select name="license">' + sel_options(licn) + '</select></div>'
+            '<div class="fit"><button type="submit">Enregistrer</button></div>'
+            '</div></form>'
+            '<div class="row2" style="margin-top:12px;align-items:center;">'
+            '<button class="mini" type="button" data-c="' + cred_attr + '" onclick="cp(this)">Copier les identifiants</button>'
+            '<span class="grow"></span>'
+            '<form method="post" action="/admin/delete" onsubmit="return confirm(\'Supprimer ' + e + ' ?\');" style="margin:0;"><input type="hidden" name="username" value="' + e + '"><button class="danger" type="submit">Supprimer</button></form>'
+            '</div></div></details>')
+    if not cons_items:
+        cons_items = '<p class="sub" style="margin:8px 0 0;">Aucun consultant pour le moment.</p>'
 
     banner = ('<div class="ok">%s</div>' % html.escape(msg)) if msg else ""
     if err:
         banner += '<div class="err">%s</div>' % html.escape(err)
 
-    add_cons = """
-    <form method="post" action="/admin/add">
-      <div class="row2">
-        <div><label>Identifiant</label><input name="username" placeholder="ex: jean" required></div>
-        <div><label>Mot de passe</label><input name="password" required></div>
-        <div><label>Licence %s</label><select name="license" required>%s</select></div>
-        <div class="fit"><button type="submit">Ajouter</button></div>
-      </div>
-    </form>""" % (TIP % "La licence (donc l'IP fixe + le compte hellowork) sur laquelle ce consultant travaillera.", options) if lic else '<p class="sub" style="margin:0;">Cree d\'abord une licence ci-dessus pour pouvoir ajouter des consultants.</p>'
+    if lic:
+        add_cons = (
+            '<form method="post" action="/admin/add"><div class="row2">'
+            '<div><label>Identifiant</label><input name="username" placeholder="ex: jean" required></div>'
+            '<div><label>Mot de passe</label><input name="password" required></div>'
+            '<div><label>Licence ' + (TIP % "La licence (IP fixe + compte hellowork) sur laquelle ce consultant travaillera.") + '</label><select name="license" required>' + sel_options() + '</select></div>'
+            '<div class="fit"><button type="submit">Ajouter</button></div>'
+            '</div></form>'
+            '<details style="margin-top:14px;"><summary>Ajouter plusieurs consultants d\'un coup ' + (TIP % "Colle une liste, un consultant par ligne. Format : identifiant, ou identifiant motdepasse. Sans mot de passe, il est genere automatiquement.") + '</summary>'
+            '<form method="post" action="/admin/bulk" style="margin-top:12px;">'
+            '<label>Licence pour tout ce lot</label><select name="license" required>' + sel_options() + '</select>'
+            '<label style="margin-top:12px;">Liste (un par ligne)</label>'
+            '<textarea name="list" placeholder="melina&#10;julia motdepasse123&#10;patrick&#10;theo"></textarea>'
+            '<button type="submit" style="margin-top:12px;">Creer le lot</button>'
+            '</form></details>')
+    else:
+        add_cons = '<p class="sub" style="margin:0;">Cree d\'abord une licence ci-dessus pour pouvoir ajouter des consultants.</p>'
 
-    return (HEAD % "Administration") + """
-<div class="wrap">
-  <div class="topbar">
-    <div class="brand" style="margin:0;"><div class="logo">S</div><h1>Administration</h1></div>
-    <a class="link" href="/logout">Se deconnecter</a>
-  </div>
+    head = (HEAD % "Administration") + (
+        '<div class="wrap">'
+        '<div class="topbar"><div class="brand" style="margin:0;"><div class="logo">S</div><h1>Administration</h1></div>'
+        '<a class="link" href="/logout">Se deconnecter</a></div>'
+        '<div class="info"><b>Comment ca marche, en 3 etapes :</b>'
+        '<div>1. Cree une <b>licence</b> = un compte hellowork partage + son IP fixe (l\'IP est attribuee automatiquement).</div>'
+        '<div>2. Ajoute tes <b>consultants</b> dans cette licence. Chacun aura son propre navigateur.</div>'
+        '<div>3. Chaque consultant se connecte ici, ouvre son navigateur, et travaille sur hellowork via l\'IP de sa licence.</div></div>'
+        '<div class="stats">'
+        '<div class="stat"><div class="n">' + str(len(lic)) + '</div><div class="l">Licences</div></div>'
+        '<div class="stat"><div class="n">' + str(len(cons)) + '</div><div class="l">Consultants</div></div>'
+        '<div class="stat"><div class="n">' + str(len(online)) + '</div><div class="l">En ligne</div></div>'
+        '<div class="stat"><div class="n">' + str(active) + '</div><div class="l">Postes actifs</div></div>'
+        '</div>' + banner)
 
-  <div class="info">
-    <b>Comment ca marche, en 3 etapes :</b>
-    <div>1. Cree une <b>licence</b> = un compte hellowork partage + son IP fixe (l'IP est attribuee automatiquement).</div>
-    <div>2. Ajoute tes <b>consultants</b> dans cette licence (2 a 4 recommandes). Chacun aura son propre navigateur.</div>
-    <div>3. Chaque consultant se connecte ici avec son identifiant, ouvre son navigateur, et travaille sur hellowork via l'IP de sa licence.</div>
-  </div>
+    lic_panel = (
+        '<div class="panel"><h1 style="font-size:15px;margin:0 0 12px;">Licences</h1>'
+        '<form method="post" action="/admin/lic-add"><div class="row2">'
+        '<div><label>Nom de la licence ' + (TIP % "Un nom libre pour t'y retrouver (ex: le compte hellowork concerne).") + '</label><input name="name" placeholder="ex: equipe-paris" required></div>'
+        '<div><label>Port Oxylabs ' + (TIP % "Laisse vide : la prochaine IP libre est attribuee automatiquement. Sinon force un port precis.") + '</label><input name="port" type="number" min="1" max="65535" placeholder="auto"></div>'
+        '<div class="fit"><button type="submit">Ajouter</button></div></div>'
+        '<div class="row2" style="margin-top:6px;">'
+        '<div><label>Compte hellowork (email) ' + (TIP % "Peut etre rempli plus tard via Gerer. S'affiche au consultant pour sa 1re connexion, puis c'est memorise.") + '</label><input name="hw_email" type="text" placeholder="(optionnel, modifiable ensuite)"></div>'
+        '<div><label>Mot de passe hellowork</label><input name="hw_password" type="text" placeholder="(optionnel)"></div></div>'
+        '</form><div style="margin-top:14px;">' + lic_items + '</div></div>')
 
-  <div class="stats">
-    <div class="stat"><div class="n">%d</div><div class="l">Licences</div></div>
-    <div class="stat"><div class="n">%d</div><div class="l">Consultants</div></div>
-    <div class="stat"><div class="n">%d</div><div class="l">Postes actifs</div></div>
-  </div>
+    cons_panel = (
+        '<div class="panel"><h1 style="font-size:15px;margin:0 0 12px;">Consultants</h1>'
+        + add_cons +
+        '<div style="margin-top:14px;">' + cons_items + '</div></div>')
 
-  %s
+    script = ('<script>function cp(b){var t=b.getAttribute("data-c");'
+              'navigator.clipboard.writeText(t).then(function(){var o=b.textContent;'
+              'b.textContent="Copie";setTimeout(function(){b.textContent=o;},1500);});}</script>')
 
-  <div class="panel">
-    <h1 style="font-size:15px;margin:0 0 12px;">Ajouter une licence</h1>
-    <form method="post" action="/admin/lic-add">
-      <div class="row2">
-        <div><label>Nom de la licence %s</label><input name="name" placeholder="ex: equipe-paris" required></div>
-        <div><label>Port Oxylabs %s</label><input name="port" type="number" min="1" max="65535" placeholder="auto"></div>
-        <div class="fit"><button type="submit">Ajouter</button></div>
-      </div>
-      <div class="row2" style="margin-top:6px;">
-        <div><label>Compte hellowork (email) %s</label><input name="hw_email" type="text" placeholder="compte@exemple.com"></div>
-        <div><label>Mot de passe hellowork</label><input name="hw_password" type="text" placeholder="(optionnel)"></div>
-      </div>
-    </form>
-    <table style="margin-top:14px;"><thead><tr><th>Licence</th><th>Port</th><th>Compte hellowork</th><th>Consult.</th><th></th></tr></thead><tbody>%s</tbody></table>
-  </div>
-
-  <div class="panel">
-    <h1 style="font-size:15px;margin:0 0 12px;">Ajouter un consultant %s</h1>
-    %s
-    <table style="margin-top:14px;"><thead><tr><th>Consultant</th><th>Licence</th><th>Poste</th><th>Etat</th><th></th></tr></thead><tbody>%s</tbody></table>
-    <p class="foot" style="text-align:left;">Un nouveau poste passe de &laquo; demarrage &raquo; a &laquo; actif &raquo; en moins d'une minute.</p>
-  </div>
-</div></body></html>""" % (
-        len(lic), len(cons), active, banner,
-        TIP % "Un nom libre pour t'y retrouver (ex: le compte hellowork concerne). 1 licence = 1 compte hellowork + 1 IP fixe.",
-        TIP % "Laisse vide : la prochaine IP libre est attribuee automatiquement. Sinon force un port precis depuis ton dashboard Oxylabs.",
-        TIP % "Le compte hellowork partage de cette licence. Il s'affichera au consultant pour sa 1re connexion, puis c'est memorise.",
-        lic_rows,
-        TIP % "Chaque consultant a son propre navigateur (poste), sur l'IP de sa licence. Il demarre tout seul en moins d'une minute.",
-        add_cons, cons_rows)
+    return head + lic_panel + cons_panel + '</div>' + script + '</body></html>'
 
 
 class H(BaseHTTPRequestHandler):
@@ -518,6 +612,76 @@ class H(BaseHTTPRequestHandler):
             cfg["consultants"][u] = {"password": p, "license": licn, "seat": next_seat(cfg)}
             save_cfg(cfg)
             self._redir("/admin")
+
+        elif path == "/admin/lic-edit":
+            name = f.get("name", [""])[0].strip()
+            if name not in cfg["licenses"]:
+                self._send(200, admin_page(cfg, running_seats(), err="Licence inconnue.")); return
+            port = f.get("port", [""])[0].strip()
+            if port:
+                if not (port.isdigit() and 1 <= int(port) <= 65535):
+                    self._send(200, admin_page(cfg, running_seats(), err="Port invalide.")); return
+                new_port = int(port)
+                if any(k != name and int(l.get("port", 0)) == new_port for k, l in cfg["licenses"].items()):
+                    self._send(200, admin_page(cfg, running_seats(), err="Ce port est deja utilise par une autre licence.")); return
+                cfg["licenses"][name]["port"] = new_port
+            cfg["licenses"][name]["hw_email"] = f.get("hw_email", [""])[0].strip()
+            newpw = f.get("hw_password", [""])[0]
+            if newpw:
+                cfg["licenses"][name]["hw_password"] = newpw
+            save_cfg(cfg)
+            self._redir("/admin")
+
+        elif path == "/admin/lic-test":
+            name = f.get("name", [""])[0].strip()
+            if name not in cfg["licenses"]:
+                self._redir("/admin"); return
+            try:
+                ip = proxy_exit_ip(name)
+                cfg["licenses"][name]["ip"] = ip
+                save_cfg(cfg)
+                self._send(200, admin_page(load_cfg(), running_seats(),
+                    msg="Licence %s : sortie confirmee sur l'IP %s." % (name, ip))); return
+            except Exception:
+                self._send(200, admin_page(cfg, running_seats(),
+                    err="Test impossible pour %s. Le proxy n'est peut-etre pas encore demarre : relance la synchro et reessaie." % name)); return
+
+        elif path == "/admin/edit":
+            u = f.get("username", [""])[0].strip()
+            if u not in cfg["consultants"]:
+                self._send(200, admin_page(cfg, running_seats(), err="Consultant inconnu.")); return
+            licn = f.get("license", [""])[0].strip()
+            if licn and licn not in cfg["licenses"]:
+                self._send(200, admin_page(cfg, running_seats(), err="Licence inconnue.")); return
+            newpw = f.get("password", [""])[0]
+            if newpw:
+                cfg["consultants"][u]["password"] = newpw
+            if licn:
+                cfg["consultants"][u]["license"] = licn
+            save_cfg(cfg)
+            self._redir("/admin")
+
+        elif path == "/admin/bulk":
+            licn = f.get("license", [""])[0].strip()
+            if licn not in cfg["licenses"]:
+                self._send(200, admin_page(cfg, running_seats(), err="Choisis une licence pour l'import.")); return
+            added = 0
+            skipped = []
+            for line in f.get("list", [""])[0].splitlines():
+                parts = [p for p in re.split(r"[,;\t ]+", line.strip()) if p]
+                if not parts:
+                    continue
+                u = parts[0]
+                pw = parts[1] if len(parts) > 1 else secrets.token_hex(4)
+                if not NAME_RE.match(u) or u == ADMIN_USER or u in cfg["consultants"]:
+                    skipped.append(u)
+                    continue
+                cfg["consultants"][u] = {"password": pw, "license": licn, "seat": next_seat(cfg)}
+                added += 1
+            save_cfg(cfg)
+            m = "%d consultant(s) ajoute(s) a la licence %s." % (added, licn)
+            e = ("Ignores (deja pris ou invalides) : " + ", ".join(skipped)) if skipped else ""
+            self._send(200, admin_page(load_cfg(), running_seats(), msg=m, err=e)); return
 
         elif path == "/admin/delete":
             u = f.get("username", [""])[0].strip()
