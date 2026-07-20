@@ -3,3 +3,6 @@
 proxy-selectif-oxylabs-*.zip
 proxy-oxylabs-*.zip
 *.zip
+
+# secrets bureau a distance
+remote-desktop/.env

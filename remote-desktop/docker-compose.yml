@@ -1,0 +1,80 @@
+# Bureau a distance — navigateurs streames derriere une IP fixe Oxylabs.
+#
+# Principe :
+#   - "proxy-groupe1" : petit proxy local (gost) qui ajoute l'auth Oxylabs
+#     et sort par l'IP fixe du groupe (le PORT choisi = l'IP).
+#   - "seat-1", "seat-2" : un navigateur Chromium par consultant, accessible
+#     DANS le navigateur web (noVNC/Selkies), sortant via le proxy → meme IP.
+#   - "caddy" : portail public (ton sous-domaine), HTTPS auto + login +
+#     reverse-proxy vers chaque siege.
+#
+# Conteneurs identiques => meme fingerprint (canvas inclus) pour tous.
+# Ajouter un consultant = dupliquer un bloc "seat-N" (voir DEPLOIEMENT.md).
+
+services:
+  proxy-groupe1:
+    image: ginuerzh/gost:latest
+    # Ecoute en local sur 8080, forwarde vers Oxylabs ISP avec les identifiants.
+    # Le PORT Oxylabs (OXY_PORT_G1) determine l'IP fixe partagee du groupe.
+    command: >
+      -L=http://:8080
+      -F=http://${OXY_USER}:${OXY_PASS}@isp.oxylabs.io:${OXY_PORT_G1}
+    restart: unless-stopped
+    networks: [interne]
+
+  seat-1:
+    image: lscr.io/linuxserver/chromium:latest
+    depends_on: [proxy-groupe1]
+    security_opt: [seccomp:unconfined]
+    shm_size: "1gb"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${FP_TZ}
+      - LC_ALL=fr_FR.UTF-8
+      - TITLE=Sourcing
+      # Tout le trafic du navigateur passe par le proxy => IP fixe Oxylabs.
+      # UA force pour un fingerprint coherent (identique sur tous les sieges).
+      - CHROME_CLI=--proxy-server=http://proxy-groupe1:8080 --user-agent=${FP_UA} --lang=fr-FR --start-maximized https://www.hellowork.com/
+    restart: unless-stopped
+    networks: [interne]
+
+  seat-2:
+    image: lscr.io/linuxserver/chromium:latest
+    depends_on: [proxy-groupe1]
+    security_opt: [seccomp:unconfined]
+    shm_size: "1gb"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${FP_TZ}
+      - LC_ALL=fr_FR.UTF-8
+      - TITLE=Sourcing
+      - CHROME_CLI=--proxy-server=http://proxy-groupe1:8080 --user-agent=${FP_UA} --lang=fr-FR --start-maximized https://www.hellowork.com/
+    restart: unless-stopped
+    networks: [interne]
+
+  caddy:
+    image: caddy:2
+    depends_on: [seat-1, seat-2]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - PORTAL_DOMAIN=${PORTAL_DOMAIN}
+      - PORTAL_USER=${PORTAL_USER}
+      - PORTAL_PASS_HASH=${PORTAL_PASS_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./portal:/srv/portal:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks: [interne]
+
+networks:
+  interne:
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,25 @@
+# Portail public : HTTPS automatique (Let's Encrypt) + login + reverse-proxy.
+# Le sous-domaine doit pointer (DNS A) vers l'IP de ton VPS, ports 80/443 ouverts.
+
+{$PORTAL_DOMAIN} {
+	# Login unique pour accE9der au portail et aux sièges.
+	basicauth {
+		{$PORTAL_USER} {$PORTAL_PASS_HASH}
+	}
+
+	# Siège 1 -> navigateur du consultant 1 (Selkies/noVNC sur le port 3000).
+	handle_path /s1/* {
+		reverse_proxy seat-1:3000
+	}
+
+	# Siège 2 -> navigateur du consultant 2.
+	handle_path /s2/* {
+		reverse_proxy seat-2:3000
+	}
+
+	# Page d'accueil du portail (charte de l'extension).
+	handle {
+		root * /srv/portal
+		file_server
+	}
+}
