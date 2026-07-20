@@ -17,6 +17,7 @@ from urllib.parse import parse_qs
 SECRET = os.environ.get("SESSION_SECRET", "change-me").encode()
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config.json")
 STATUS_PATH = os.environ.get("STATUS_PATH", "/app/status.json")
+ACTIVITY_PATH = os.environ.get("ACTIVITY_PATH", "/app/activity.json")
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 TTL = 8 * 3600
@@ -51,6 +52,31 @@ def running_seats():
             return set(int(x) for x in json.load(f).get("running", []))
     except Exception:
         return set()
+
+
+def touch_seat(seat):
+    # Marque un poste comme "utilise maintenant" (pour les postes a la demande :
+    # apply.sh demarre les postes vus recemment et arrete les autres).
+    try:
+        seat = int(seat)
+    except Exception:
+        return
+    try:
+        with open(ACTIVITY_PATH) as f:
+            a = json.load(f)
+        if not isinstance(a, dict):
+            a = {}
+    except Exception:
+        a = {}
+    a[str(seat)] = int(time.time())
+    try:
+        d = os.path.dirname(ACTIVITY_PATH) or "."
+        fd, tmp = tempfile.mkstemp(dir=d)
+        with os.fdopen(fd, "w") as f:
+            json.dump(a, f)
+        os.replace(tmp, ACTIVITY_PATH)
+    except Exception:
+        pass
 
 
 def next_seat(c):
@@ -169,7 +195,11 @@ details[open]>summary::before{content:"\\25BE";}
 .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%%;background:var(--line);color:var(--muted);font-size:11px;font-weight:700;cursor:help;margin-left:6px;vertical-align:middle;font-style:normal;}
 .tip .bub{visibility:hidden;opacity:0;transition:opacity .15s;position:absolute;bottom:150%%;left:50%%;transform:translateX(-50%%);background:var(--ink);color:var(--surface);font-weight:400;font-size:12px;line-height:1.5;padding:10px 12px;border-radius:10px;width:250px;z-index:30;text-align:left;box-shadow:0 8px 26px rgba(0,0,0,.28);}
 .tip:hover .bub{visibility:visible;opacity:1;}
-@media(max-width:560px){.wrap{padding:20px 14px 48px;}.panel{padding:18px 16px;}.card{padding:26px 22px;}}
+.stage{position:relative;margin-top:14px;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);background:#0b0f16;min-height:62vh;}
+.stage iframe{display:block;width:100%%;height:74vh;border:0;background:#0b0f16;}
+.cover{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface);padding:24px;}
+.cover .logo{width:52px;height:52px;font-size:24px;border-radius:15px;}
+@media(max-width:560px){.wrap{padding:20px 14px 48px;}.panel{padding:18px 16px;}.card{padding:26px 22px;}.stage iframe{height:68vh;}}
 </style></head><body>"""
 
 TIP = '<span class="tip">i<span class="bub">%s</span></span>'
@@ -205,16 +235,38 @@ def portal_page(user, seat, lic_name, hw_email, hw_password):
     </div>
   </details>""" % (html.escape(hw_email), pw)
     return (HEAD % "Mon espace") + """
-<div class="center"><div class="card">
-  <div class="brand"><div class="logo">S</div><h1>Bonjour %s</h1></div>
-  <p class="sub"><span class="dot ok"></span>Ton navigateur de sourcing est pret. Clique pour l'ouvrir dans un onglet. Rien a installer.%s</p>
-  <a class="btn" style="display:block;padding:13px;" href="/s%d/" target="_blank" rel="noopener">Ouvrir mon navigateur</a>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand" style="margin:0;"><div class="logo">S</div><h1>Bonjour %s</h1></div>
+    <a class="link" href="/logout">Se deconnecter</a>
+  </div>
+  <p class="sub"><span class="dot ok"></span>Ton navigateur de sourcing s'ouvre ci-dessous. Laisse cet onglet ouvert pendant que tu travailles.%s</p>
+  <div class="stage">
+    <iframe id="frame" title="Navigateur de sourcing" allow="clipboard-read; clipboard-write"></iframe>
+    <div id="cover" class="cover">
+      <div class="logo">S</div>
+      <p style="font-weight:650;margin:14px 0 4px;">Ton navigateur se prepare</p>
+      <p class="sub" style="margin:0 0 18px;text-align:center;max-width:340px;">Clique pour l'ouvrir. Au tout premier demarrage, laisse-lui une trentaine de secondes.</p>
+      <button id="go" type="button">Ouvrir mon navigateur</button>
+      <button id="rl" type="button" class="danger" style="margin-top:12px;display:none;">Ca ne s'affiche pas ? Recharger</button>
+    </div>
+  </div>
+  <p class="foot" style="text-align:left;">Tu peux aussi <a class="link" href="/s%d/" target="_blank" rel="noopener">l'ouvrir dans un nouvel onglet</a>. Ferme l'onglet quand tu as fini : ton navigateur se met en veille tout seul apres un moment sans activite.</p>
   %s
-  <p class="foot">Au 1er chargement, patiente quelques secondes. Ferme l'onglet quand tu as fini.<br><a href="/logout">Se deconnecter</a></p>
-</div></div></body></html>""" % (
+</div>
+<script>
+var seat=%d;
+function beat(){fetch('/keepalive',{method:'POST',cache:'no-store'}).catch(function(){});}
+beat();setInterval(beat,45000);
+var f=document.getElementById('frame'),c=document.getElementById('cover'),rl=document.getElementById('rl');
+function launch(){f.src='/s'+seat+'/';c.style.display='none';rl.style.display='inline-flex';}
+document.getElementById('go').addEventListener('click',launch);
+rl.addEventListener('click',function(){f.src='/s'+seat+'/?t='+Date.now();});
+</script>
+</body></html>""" % (
         html.escape(user),
-        TIP % "Tu es rattache a la licence &laquo; " + html.escape(lic_name) + " &raquo; : tu sors sur son IP fixe, comme le reste de ton equipe.",
-        seat, creds)
+        TIP % ("Tu es rattache a la licence &laquo; " + html.escape(lic_name) + " &raquo; : tu sors sur son IP fixe, comme le reste de ton equipe."),
+        seat, creds, seat)
 
 
 def admin_page(cfg, run, msg="", err=""):
@@ -363,7 +415,10 @@ class H(BaseHTTPRequestHandler):
                     else:
                         break
                 seat = load_cfg()["consultants"].get(user, {}).get("seat")
-                self._send(200 if str(seat) == num else 403); return
+                match = str(seat) == num
+                if match:
+                    touch_seat(num)
+                self._send(200 if match else 403); return
             self._send(200)
         elif path == "/login":
             self._send(200, login_page())
@@ -381,6 +436,7 @@ class H(BaseHTTPRequestHandler):
             cfg = load_cfg()
             r = cfg["consultants"].get(user, {})
             licrec = cfg["licenses"].get(r.get("license", ""), {})
+            touch_seat(r.get("seat"))
             self._send(200, portal_page(user, r.get("seat", 1), r.get("license", ""),
                                         licrec.get("hw_email", ""), licrec.get("hw_password", "")))
         else:
@@ -401,6 +457,15 @@ class H(BaseHTTPRequestHandler):
                 self._redir("/", cookie=self._cookie(sign(u, int(time.time()) + TTL))); return
             self._send(200, login_page(error=True))
             return
+
+        if path == "/keepalive":
+            # Battement du portail consultant : garde son poste allume tant qu'il
+            # travaille (utilise par les postes a la demande).
+            if user and user != ADMIN_USER:
+                r = load_cfg()["consultants"].get(user)
+                if r:
+                    touch_seat(r.get("seat"))
+            self._send(204); return
 
         if user != ADMIN_USER:
             self._redir("/login"); return

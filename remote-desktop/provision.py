@@ -56,6 +56,7 @@ for login, c in sorted(cons.items()):
     depends_on: [%s]
     security_opt: [seccomp:unconfined]
     shm_size: "1gb"
+    mem_limit: "${SEAT_MEM:-3g}"
     restart: unless-stopped
     networks: [interne]
     volumes:

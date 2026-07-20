@@ -13,6 +13,8 @@ services:
       - ./config.json:/app/config.json
       # ro : etat des postes (ecrit par apply.sh), affiche dans l'admin.
       - ./status.json:/app/status.json:ro
+      # rw : dernier passage de chaque consultant (postes a la demande).
+      - ./activity.json:/app/activity.json
     restart: unless-stopped
     networks: [interne]
 
