@@ -4,6 +4,7 @@ const DEFAULTS = {
   username: "",
   password: "",
   domains: ["hellowork.com"],
+  blockWebRtcLeak: true,
 
   alignFingerprint: false,
   fpUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
@@ -57,6 +58,7 @@ async function restore() {
   $("proxyHost").value = cfg.proxyHost;
   $("proxyPort").value = cfg.proxyPort;
   $("domains").value = (cfg.domains || []).join("\n");
+  $("blockWebRtcLeak").checked = cfg.blockWebRtcLeak !== false;
 
   $("alignFingerprint").checked = !!cfg.alignFingerprint;
   $("fpUserAgent").value = cfg.fpUserAgent;
@@ -94,6 +96,7 @@ async function saveAndTest() {
     proxyHost: $("proxyHost").value.trim() || DEFAULTS.proxyHost,
     proxyPort: parseInt($("proxyPort").value, 10) || DEFAULTS.proxyPort,
     domains: domains.length ? domains : DEFAULTS.domains,
+    blockWebRtcLeak: $("blockWebRtcLeak").checked,
 
     alignFingerprint: $("alignFingerprint").checked,
     fpUserAgent: $("fpUserAgent").value.trim() || DEFAULTS.fpUserAgent,

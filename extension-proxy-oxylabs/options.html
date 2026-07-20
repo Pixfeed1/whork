@@ -111,6 +111,12 @@
     <textarea id="domains" spellcheck="false"></textarea>
     <small>Les sous-domaines sont inclus automatiquement (hellowork.com couvre www, cdn, etc.).</small>
 
+    <div class="toggle" style="margin-top:18px;">
+      <input id="blockWebRtcLeak" type="checkbox">
+      <label for="blockWebRtcLeak" style="margin:0;">Bloquer la fuite d'IP reelle (WebRTC) — recommande</label>
+    </div>
+    <small>Empeche une page de lire votre vraie IP via WebRTC, meme derriere le proxy. Reglage global du navigateur, actif seulement quand le routage l'est.</small>
+
     <h2>Alignement du fingerprint (groupe)</h2>
     <p class="hint">Facultatif. A n'activer que si la plateforme detecte encore apres avoir unifie l'IP. Applique les memes valeurs a tout le groupe, sur les domaines cibles uniquement.</p>
     <div class="toggle">

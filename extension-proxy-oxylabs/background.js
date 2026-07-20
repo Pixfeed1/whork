@@ -49,6 +49,9 @@ const DEFAULTS = {
   domains: ["hellowork.com"],
   suspended: false,
 
+  // Bloque la fuite de l'IP reelle via WebRTC (recommande).
+  blockWebRtcLeak: true,
+
   // --- Alignement fingerprint du groupe (optionnel) ---
   alignFingerprint: false,
   ...FP_PROFILE
@@ -81,6 +84,20 @@ async function applyFromStorage() {
   const fpOn = active && Boolean(cfg.alignFingerprint);
   await updateHeaderRules(cfg, fpOn);
   updateFpScript(fpOn);
+
+  // Anti-fuite WebRTC : quand le routage est actif, WebRTC ne doit pas
+  // exposer la vraie IP en contournant le proxy.
+  await updateWebRtc(active && cfg.blockWebRtcLeak !== false);
+}
+
+async function updateWebRtc(on) {
+  try {
+    if (on) {
+      await chrome.privacy.network.webRTCIPHandlingPolicy.set({ value: "disable_non_proxied_udp" });
+    } else {
+      await chrome.privacy.network.webRTCIPHandlingPolicy.clear({});
+    }
+  } catch (e) { /* API indisponible : non bloquant */ }
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -88,7 +105,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const keys = Object.keys(changes);
   const watched = [
     "username", "password", "proxyHost", "proxyPort", "domains", "suspended",
-    "alignFingerprint", ...Object.keys(FP_PROFILE)
+    "blockWebRtcLeak", "alignFingerprint", ...Object.keys(FP_PROFILE)
   ];
   if (keys.some(k => watched.includes(k))) {
     applyFromStorage();

@@ -47,6 +47,7 @@ function generate() {
     proxyHost: $("proxyHost").value.trim() || "isp.oxylabs.io",
     proxyPort: parseInt($("proxyPort").value, 10) || 8001,
     domains: domains.length ? domains : ["hellowork.com"],
+    blockWebRtcLeak: $("blockWebRtcLeak").checked,
     alignFingerprint: $("alignFingerprint").checked
   };
 
