@@ -1,8 +1,9 @@
-# Portail public : HTTPS automatique (Let's Encrypt) + login + reverse-proxy.
-# Le sous-domaine doit pointer (DNS A) vers l'IP de ton VPS, ports 80/443 ouverts.
+# Routeur interne (HTTP seul, port 8080). Pas de TLS ici : c'est le serveur
+# web en frontal (cPanel/Apache, ou Cloudflare Tunnel) qui gère le HTTPS de
+# talens.pixfeed.net et redirige vers ce port.
 
-{$PORTAL_DOMAIN} {
-	# Login unique pour accE9der au portail et aux sièges.
+:8080 {
+	# Login unique pour accéder au portail et aux sièges.
 	basicauth {
 		{$PORTAL_USER} {$PORTAL_PASS_HASH}
 	}

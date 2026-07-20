@@ -57,11 +57,11 @@ services:
   caddy:
     image: caddy:2
     depends_on: [seat-1, seat-2]
+    # Ecoute UNIQUEMENT en local sur 8080 (HTTP, pas de TLS) : c'est cPanel
+    # (Apache) qui termine le HTTPS de talens.pixfeed.net et redirige ici.
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:8080"
     environment:
-      - PORTAL_DOMAIN=${PORTAL_DOMAIN}
       - PORTAL_USER=${PORTAL_USER}
       - PORTAL_PASS_HASH=${PORTAL_PASS_HASH}
     volumes:
