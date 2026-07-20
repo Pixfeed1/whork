@@ -48,10 +48,13 @@ def save_cfg(c):
 
 
 def next_seat(c):
+    # Numero monotone : jamais reutilise (evite d'heriter du volume/session
+    # d'un consultant supprime). Le compteur est stocke dans la config.
     used = {int(r.get("seat", 0)) for r in c["consultants"].values()}
-    s = 1
+    s = int(c.get("seat_seq", 0)) + 1
     while s in used:
         s += 1
+    c["seat_seq"] = s
     return s
 
 
