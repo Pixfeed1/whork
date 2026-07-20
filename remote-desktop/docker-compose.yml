@@ -14,11 +14,12 @@
 services:
   proxy-groupe1:
     image: ginuerzh/gost:latest
-    # Ecoute en local sur 8080, forwarde vers Oxylabs ISP avec les identifiants.
-    # Le PORT Oxylabs (OXY_PORT_G1) determine l'IP fixe partagee du groupe.
+    # Ecoute en local sur 8080, forwarde vers Oxylabs ISP.
+    # Auth par WHITELIST d'IP (le serveur est autorise chez Oxylabs) -> pas de
+    # mot de passe. Le PORT (OXY_PORT_G1) determine l'IP fixe du groupe.
     command: >
       -L=http://:8080
-      -F=http://${OXY_USER}:${OXY_PASS}@isp.oxylabs.io:${OXY_PORT_G1}
+      -F=http://isp.oxylabs.io:${OXY_PORT_G1}
     restart: unless-stopped
     networks: [interne]
 
