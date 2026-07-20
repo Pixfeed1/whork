@@ -23,6 +23,9 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 TTL = 8 * 3600
 COOKIE = "talens_session"
 NAME_RE = re.compile(r"^[a-zA-Z0-9._-]{2,32}$")
+# Plage de ports Oxylabs (= les IP fixes). Par defaut 8001..8020 (20 IP).
+PORT_BASE = int(os.environ.get("OXY_PORT_BASE", "8001"))
+PORT_MAX = int(os.environ.get("OXY_PORT_MAX", "8020"))
 
 
 def load_cfg():
@@ -50,6 +53,14 @@ def next_seat(c):
     while s in used:
         s += 1
     return s
+
+
+def next_port(c):
+    used = {int(l.get("port", 0)) for l in c["licenses"].values()}
+    for p in range(PORT_BASE, PORT_MAX + 1):
+        if p not in used:
+            return p
+    return None
 
 
 def sign(user, exp):
@@ -206,7 +217,7 @@ def admin_page(cfg, msg="", err=""):
     <form method="post" action="/admin/lic-add">
       <div class="row2">
         <div><label>Nom de la licence <span class="tip">i<span class="bub">Un nom libre pour t'y retrouver (ex: le compte hellowork concerne). 1 licence = 1 compte hellowork + 1 IP fixe.</span></span></label><input name="name" placeholder="ex: licence1" required></div>
-        <div><label>Port Oxylabs <span class="tip">i<span class="bub">Le port depuis ton dashboard Oxylabs (ISP Proxies, Proxy list). Chaque port = une IP fixe. Ex: 8001 = 31.98.21.135.</span></span></label><input name="port" type="number" min="1" max="65535" placeholder="8001" required></div>
+        <div><label>Port Oxylabs <span class="tip">i<span class="bub">Laisse vide : le prochain port/IP libre est attribue automatiquement. Sinon force un port precis (ex: 8001 = une IP fixe donnee, depuis ton dashboard Oxylabs).</span></span></label><input name="port" type="number" min="1" max="65535" placeholder="auto"></div>
         <div class="fit"><button type="submit">Ajouter</button></div>
       </div>
       <div class="row2" style="margin-top:6px;">
@@ -319,10 +330,16 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, admin_page(cfg, err="Nom de licence invalide.")); return
             if name in cfg["licenses"]:
                 self._send(200, admin_page(cfg, err="Cette licence existe deja.")); return
-            if not (port.isdigit() and 1 <= int(port) <= 65535):
-                self._send(200, admin_page(cfg, err="Port invalide.")); return
+            if port:
+                if not (port.isdigit() and 1 <= int(port) <= 65535):
+                    self._send(200, admin_page(cfg, err="Port invalide.")); return
+                port_val = int(port)
+            else:
+                port_val = next_port(cfg)
+                if port_val is None:
+                    self._send(200, admin_page(cfg, err="Plus de port/IP disponible (limite atteinte).")); return
             cfg["licenses"][name] = {
-                "port": int(port),
+                "port": port_val,
                 "hw_email": f.get("hw_email", [""])[0].strip(),
                 "hw_password": f.get("hw_password", [""])[0],
             }
