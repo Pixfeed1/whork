@@ -11,6 +11,8 @@ services:
     volumes:
       # rw : l'interface admin ecrit licences + comptes dans config.json.
       - ./config.json:/app/config.json
+      # ro : etat des postes (ecrit par apply.sh), affiche dans l'admin.
+      - ./status.json:/app/status.json:ro
     restart: unless-stopped
     networks: [interne]
 
