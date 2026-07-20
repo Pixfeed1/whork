@@ -1,3 +1,5 @@
 
-# artefacts de build extension
+# artefacts de build extension (peuvent contenir des identifiants pre-remplis : ne jamais committer)
 proxy-selectif-oxylabs-*.zip
+proxy-oxylabs-*.zip
+*.zip
