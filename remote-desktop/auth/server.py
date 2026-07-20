@@ -116,7 +116,14 @@ th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05
 .row2>div.fit{flex:0;}
 .dot{width:9px;height:9px;border-radius:50%%;background:var(--ok);display:inline-block;margin-right:6px;}
 .topbar{display:flex;justify-content:space-between;align-items:center;}
+.tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%%;background:var(--line);color:var(--ink);font-size:11px;font-weight:700;cursor:help;margin-left:6px;vertical-align:middle;}
+.tip .bub{visibility:hidden;opacity:0;transition:opacity .15s;position:absolute;bottom:150%%;left:50%%;transform:translateX(-50%%);background:var(--ink);color:#fff;font-weight:400;font-size:12px;line-height:1.45;padding:9px 11px;border-radius:8px;width:250px;z-index:20;text-align:left;box-shadow:0 6px 20px rgba(0,0,0,.18);}
+.tip:hover .bub{visibility:visible;opacity:1;}
 </style></head><body>"""
+
+
+def tip(text):
+    return '<span class="tip">i<span class="bub">' + text + '</span></span>'
 
 
 def login_page(error=False):
@@ -139,7 +146,7 @@ def portal_page(user, seat, lic):
     return (HEAD % "Mon espace") + """
 <div class="center"><div class="card">
   <div class="brand"><div class="logo">S</div><h1>Bonjour %s</h1></div>
-  <p class="sub"><span class="dot"></span>Ton navigateur de sourcing est pret (licence %s). Clique pour l'ouvrir dans cet onglet. Rien a installer.</p>
+  <p class="sub"><span class="dot"></span>Ton navigateur de sourcing est pret (licence %s). Clique pour l'ouvrir dans cet onglet. Rien a installer.<span class="tip">i<span class="bub">Au premier chargement, patiente quelques secondes. Ensuite tu utilises hellowork comme d'habitude. Ferme l'onglet quand tu as termine.</span></span></p>
   <a class="btn" style="display:block;padding:13px;" href="/s%d/" target="_blank" rel="noopener">Ouvrir mon navigateur</a>
   <p class="foot">Ton poste est personnel et sort sur l'IP fixe de ta licence.<br><a href="/logout">Se deconnecter</a></p>
 </div></div></body></html>""" % (html.escape(user), html.escape(lic), seat)
@@ -180,7 +187,7 @@ def admin_page(cfg, msg="", err=""):
       <div class="row2">
         <div><label>Identifiant</label><input name="username" placeholder="ex: jean" required></div>
         <div><label>Mot de passe</label><input name="password" required></div>
-        <div><label>Licence</label><select name="license" required>%s</select></div>
+        <div><label>Licence <span class="tip">i<span class="bub">La licence (donc l'IP fixe + le compte hellowork) sur laquelle ce consultant travaillera.</span></span></label><select name="license" required>%s</select></div>
         <div class="fit"><button type="submit">Ajouter</button></div>
       </div>
     </form>""" % options if lic else '<p class="sub" style="margin:0;">Cree d\'abord une licence pour pouvoir ajouter des consultants.</p>'
@@ -197,15 +204,15 @@ def admin_page(cfg, msg="", err=""):
     <h1 style="font-size:15px;margin:0 0 12px;">Ajouter une licence</h1>
     <form method="post" action="/admin/lic-add">
       <div class="row2">
-        <div><label>Nom de la licence</label><input name="name" placeholder="ex: licence1" required></div>
-        <div><label>Port Oxylabs (= l'IP fixe)</label><input name="port" type="number" min="1" max="65535" placeholder="8001" required></div>
+        <div><label>Nom de la licence <span class="tip">i<span class="bub">Un nom libre pour t'y retrouver (ex: le compte hellowork concerne). 1 licence = 1 compte hellowork + 1 IP fixe.</span></span></label><input name="name" placeholder="ex: licence1" required></div>
+        <div><label>Port Oxylabs <span class="tip">i<span class="bub">Le port depuis ton dashboard Oxylabs (ISP Proxies, Proxy list). Chaque port = une IP fixe. Ex: 8001 = 31.98.21.135.</span></span></label><input name="port" type="number" min="1" max="65535" placeholder="8001" required></div>
         <div class="fit"><button type="submit">Ajouter</button></div>
       </div>
     </form>
     <table style="margin-top:14px;"><thead><tr><th>Licence</th><th>Port</th><th>Consultants</th><th></th></tr></thead><tbody>%s</tbody></table>
   </div>
   <div class="panel">
-    <h1 style="font-size:15px;margin:0 0 12px;">Ajouter un consultant</h1>
+    <h1 style="font-size:15px;margin:0 0 12px;">Ajouter un consultant <span class="tip">i<span class="bub">Chaque consultant a son propre navigateur (poste), sur l'IP de sa licence. Il se connecte avec ces identifiants. Son poste demarre tout seul en moins d'une minute.</span></span></h1>
     %s
     <table style="margin-top:14px;"><thead><tr><th>Consultant</th><th>Licence</th><th>Poste</th><th></th></tr></thead><tbody>%s</tbody></table>
     <p class="foot" style="text-align:left;">Un nouveau poste peut mettre jusqu'a une minute a demarrer apres la creation du compte.</p>
