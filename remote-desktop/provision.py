@@ -50,6 +50,10 @@ for login, c in sorted(cons.items()):
     except Exception:
         continue
     pname = "proxy-" + safe(lic)
+    # Taille de fenetre propre a la licence : empreinte differente entre groupes,
+    # identique a l'interieur d'un groupe (tous les postes de la licence).
+    win = lics[lic].get("fp_win")
+    sizing = ("--window-size=%s" % win) if win else "--start-maximized"
     blocks.append(
 """  seat-%d:
     image: lscr.io/linuxserver/chromium:latest
@@ -67,8 +71,8 @@ for login, c in sorted(cons.items()):
       - TZ=${FP_TZ}
       - LC_ALL=fr_FR.UTF-8
       - TITLE=Sourcing
-      - CHROME_CLI=--proxy-server=http://%s:8080 --lang=fr-FR --start-maximized https://www.hellowork.com/
-""" % (seat, pname, seat, pname))
+      - CHROME_CLI=--proxy-server=http://%s:8080 --lang=fr-FR %s https://www.hellowork.com/
+""" % (seat, pname, seat, pname, sizing))
     routes.append("\t\thandle_path /s%d/* { reverse_proxy seat-%d:3000 }" % (seat, seat))
     seat_vols.append(seat)
 

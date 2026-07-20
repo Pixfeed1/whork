@@ -74,6 +74,17 @@ if [ "$CHANGED" = "1" ]; then
   docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null \
     || docker compose restart caddy
   echo "$HASH" > .last-hash
+
+  # Nettoyage : supprime les volumes des postes qui n'existent plus dans
+  # config.json (consultant supprime), pour liberer le disque.
+  USED=$(python3 -c "import json;print(' '.join(str(c.get('seat')) for c in json.load(open('config.json')).get('consultants',{}).values()))" 2>/dev/null)
+  for v in $(docker volume ls -q 2>/dev/null | grep -E 'seat-[0-9]+-data$'); do
+    num=$(echo "$v" | sed -n 's/.*seat-\([0-9]\{1,\}\)-data$/\1/p')
+    case " $USED " in
+      *" $num "*) : ;;
+      *) docker volume rm "$v" >/dev/null 2>&1 || true ;;
+    esac
+  done
 fi
 
 # Etat des postes en marche -> status.json (affiche dans l'admin).
