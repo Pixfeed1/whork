@@ -1,11 +1,11 @@
 # Routeur interne (HTTP seul, port 8080). Le HTTPS de talens.pixfeed.net est
 # gere par cPanel/Apache en frontal, qui redirige ici.
 #
-# Auth : page de connexion stylee servie par le service "auth" (formulaire +
-# cookie de session), verifiee via forward_auth. Plus de pop-up basic-auth.
+# Auth par formulaire (service "auth") : cookie de session, chaque utilisateur
+# n'accede qu'a SON poste (verifie via forward_auth -> /verify).
 
 :8080 {
-	# Pages d'authentification, accessibles sans etre connecte.
+	# Pages publiques (connexion / deconnexion).
 	@public path /login /login/* /logout
 	handle @public {
 		reverse_proxy auth:9000
@@ -13,23 +13,18 @@
 
 	# Tout le reste est protege.
 	handle {
-		# Verifie la session ; si non connecte, auth renvoie une redirection /login.
 		forward_auth auth:9000 {
 			uri /verify
 		}
 
-		# Siege 1 -> navigateur du consultant 1.
-		handle_path /s1/* {
-			reverse_proxy seat-1:3000
-		}
-		# Siege 2 -> navigateur du consultant 2.
-		handle_path /s2/* {
-			reverse_proxy seat-2:3000
-		}
-		# Portail (charte de l'extension).
+		handle_path /s1/* { reverse_proxy seat-1:3000 }
+		handle_path /s2/* { reverse_proxy seat-2:3000 }
+		handle_path /s3/* { reverse_proxy seat-3:3000 }
+		handle_path /s4/* { reverse_proxy seat-4:3000 }
+
+		# Portail personnel (servi par le service auth).
 		handle {
-			root * /srv/portal
-			file_server
+			reverse_proxy auth:9000
 		}
 	}
 }

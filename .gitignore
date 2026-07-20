@@ -6,3 +6,6 @@ proxy-oxylabs-*.zip
 
 # secrets bureau a distance
 remote-desktop/.env
+
+# comptes bureau a distance (secrets)
+remote-desktop/users.json

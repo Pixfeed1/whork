@@ -1,82 +1,59 @@
-# Bureau a distance — navigateurs streames derriere une IP fixe Oxylabs.
+# Bureau a distance : 4 postes (navigateurs streames) derriere une IP fixe Oxylabs.
+# Chaque consultant a son login et son poste dedie (voir users.json).
 #
-# Principe :
-#   - "proxy-groupe1" : petit proxy local (gost) qui ajoute l'auth Oxylabs
-#     et sort par l'IP fixe du groupe (le PORT choisi = l'IP).
-#   - "seat-1", "seat-2" : un navigateur Chromium par consultant, accessible
-#     DANS le navigateur web (noVNC/Selkies), sortant via le proxy → meme IP.
-#   - "caddy" : portail public (ton sous-domaine), HTTPS auto + login +
-#     reverse-proxy vers chaque siege.
-#
-# Conteneurs identiques => meme fingerprint (canvas inclus) pour tous.
-# Ajouter un consultant = dupliquer un bloc "seat-N" (voir DEPLOIEMENT.md).
+# - proxy-groupe1 : proxy local (gost) -> Oxylabs ISP par whitelist d'IP.
+#   Le PORT (OXY_PORT_G1) determine l'IP fixe partagee du groupe.
+# - seat-1..4     : un navigateur Chromium par poste (images identiques =>
+#   meme fingerprint pour tous). Accessible dans le navigateur (noVNC/Selkies).
+# - auth          : page de connexion + sessions (multi-utilisateurs).
+# - caddy         : routeur interne (8080), protege par forward_auth.
+
+x-seat: &seat
+  image: lscr.io/linuxserver/chromium:latest
+  depends_on: [proxy-groupe1]
+  security_opt: [seccomp:unconfined]
+  shm_size: "1gb"
+  restart: unless-stopped
+  networks: [interne]
+  environment:
+    - PUID=1000
+    - PGID=1000
+    - TZ=${FP_TZ}
+    - LC_ALL=fr_FR.UTF-8
+    - TITLE=Sourcing
+    - CHROME_CLI=--proxy-server=http://proxy-groupe1:8080 --lang=fr-FR --start-maximized https://www.hellowork.com/
 
 services:
   proxy-groupe1:
     image: ginuerzh/gost:latest
-    # Ecoute en local sur 8080, forwarde vers Oxylabs ISP.
-    # Auth par WHITELIST d'IP (le serveur est autorise chez Oxylabs) -> pas de
-    # mot de passe. Le PORT (OXY_PORT_G1) determine l'IP fixe du groupe.
+    # Auth par WHITELIST d'IP (serveur autorise chez Oxylabs) -> pas de mot de passe.
     command: >
       -L=http://:8080
       -F=http://isp.oxylabs.io:${OXY_PORT_G1}
     restart: unless-stopped
     networks: [interne]
 
-  seat-1:
-    image: lscr.io/linuxserver/chromium:latest
-    depends_on: [proxy-groupe1]
-    security_opt: [seccomp:unconfined]
-    shm_size: "1gb"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=${FP_TZ}
-      - LC_ALL=fr_FR.UTF-8
-      - TITLE=Sourcing
-      # Tout le trafic du navigateur passe par le proxy => IP fixe Oxylabs.
-      # UA force pour un fingerprint coherent (identique sur tous les sieges).
-      - CHROME_CLI=--proxy-server=http://proxy-groupe1:8080 --user-agent=${FP_UA} --lang=fr-FR --start-maximized https://www.hellowork.com/
-    restart: unless-stopped
-    networks: [interne]
+  seat-1: *seat
+  seat-2: *seat
+  seat-3: *seat
+  seat-4: *seat
 
-  seat-2:
-    image: lscr.io/linuxserver/chromium:latest
-    depends_on: [proxy-groupe1]
-    security_opt: [seccomp:unconfined]
-    shm_size: "1gb"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=${FP_TZ}
-      - LC_ALL=fr_FR.UTF-8
-      - TITLE=Sourcing
-      - CHROME_CLI=--proxy-server=http://proxy-groupe1:8080 --user-agent=${FP_UA} --lang=fr-FR --start-maximized https://www.hellowork.com/
-    restart: unless-stopped
-    networks: [interne]
-
-  # Service d'authentification (page de connexion stylee + cookie de session).
   auth:
     build: ./auth
     env_file:
       - .env
+    volumes:
+      - ./users.json:/app/users.json:ro
     restart: unless-stopped
     networks: [interne]
 
   caddy:
     image: caddy:2
-    depends_on: [seat-1, seat-2, auth]
-    # Ecoute UNIQUEMENT en local sur 8080 (HTTP, pas de TLS) : c'est cPanel
-    # (Apache) qui termine le HTTPS de talens.pixfeed.net et redirige ici.
+    depends_on: [seat-1, seat-2, seat-3, seat-4, auth]
     ports:
       - "127.0.0.1:8080:8080"
-    # env_file : les valeurs (dont le hash bcrypt avec ses "$") sont passees
-    # LITTERALEMENT au conteneur, sans interpolation docker-compose.
-    env_file:
-      - .env
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./portal:/srv/portal:ro
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
