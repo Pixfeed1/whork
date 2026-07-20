@@ -42,8 +42,8 @@ const FP_PROFILE = {
 };
 
 const DEFAULTS = {
-  proxyHost: "pr.oxylabs.io",
-  proxyPort: 7777,
+  proxyHost: "isp.oxylabs.io",
+  proxyPort: 8001,
   username: "",
   password: "",
   domains: ["hellowork.com"],

@@ -44,8 +44,8 @@ function generate() {
   const cfg = {
     username: $("username").value.trim(),
     password: $("password").value,
-    proxyHost: $("proxyHost").value.trim() || "pr.oxylabs.io",
-    proxyPort: parseInt($("proxyPort").value, 10) || 7777,
+    proxyHost: $("proxyHost").value.trim() || "isp.oxylabs.io",
+    proxyPort: parseInt($("proxyPort").value, 10) || 8001,
     domains: domains.length ? domains : ["hellowork.com"],
     alignFingerprint: $("alignFingerprint").checked
   };

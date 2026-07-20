@@ -29,8 +29,8 @@
     <h1>Generer un code de groupe</h1>
     <p class="hint">Reserve a l'admin. Renseigne les infos du groupe, genere le code, et distribue-le aux consultants : ils n'auront qu'a le coller dans l'extension.</p>
 
-    <label for="username">Identifiant Oxylabs (avec le sessid du groupe)</label>
-    <input id="username" type="text" spellcheck="false" placeholder="customer-XXXX-cc-FR-city-paris-sessid-GROUPE01-sesstime-1440">
+    <label for="username">Identifiant Oxylabs (ISP)</label>
+    <input id="username" type="text" spellcheck="false" placeholder="customer-VOTRE_USER_ISP">
     <label for="password">Mot de passe Oxylabs</label>
     <input id="password" type="text" spellcheck="false">
     <small>Il sera inclus dans le code : traite ce code comme un secret (a partager en prive).</small>
@@ -38,11 +38,11 @@
     <div class="row">
       <div>
         <label for="proxyHost">Serveur proxy</label>
-        <input id="proxyHost" type="text" spellcheck="false" value="pr.oxylabs.io">
+        <input id="proxyHost" type="text" spellcheck="false" value="isp.oxylabs.io">
       </div>
       <div>
         <label for="proxyPort">Port</label>
-        <input id="proxyPort" type="number" min="1" max="65535" value="7777">
+        <input id="proxyPort" type="number" min="1" max="65535" value="8001">
       </div>
     </div>
 
