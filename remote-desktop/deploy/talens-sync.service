@@ -1,0 +1,9 @@
+[Unit]
+Description=Synchronise les postes bureau-a-distance avec les comptes (users.json)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/whork/remote-desktop
+ExecStart=/bin/sh /root/whork/remote-desktop/apply.sh

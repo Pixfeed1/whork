@@ -1,0 +1,25 @@
+# Modele du Caddyfile. Le marqueur de routes plus bas est remplace par
+# provision.py (une route par poste). Le Caddyfile final est genere : ne pas
+# l'editer a la main.
+
+:8080 {
+	# Pages publiques (connexion / deconnexion).
+	@public path /login /login/* /logout
+	handle @public {
+		reverse_proxy auth:9000
+	}
+
+	# Tout le reste est protege par le service d'auth.
+	handle {
+		forward_auth auth:9000 {
+			uri /verify
+		}
+
+{{ROUTES}}
+
+		# Portail / admin (servis par le service auth).
+		handle {
+			reverse_proxy auth:9000
+		}
+	}
+}

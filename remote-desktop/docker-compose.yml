@@ -1,55 +1,30 @@
-# Bureau a distance : 4 postes (navigateurs streames) derriere une IP fixe Oxylabs.
-# Chaque consultant a son login et son poste dedie (voir users.json).
-#
-# - proxy-groupe1 : proxy local (gost) -> Oxylabs ISP par whitelist d'IP.
-#   Le PORT (OXY_PORT_G1) determine l'IP fixe partagee du groupe.
-# - seat-1..4     : un navigateur Chromium par poste (images identiques =>
-#   meme fingerprint pour tous). Accessible dans le navigateur (noVNC/Selkies).
-# - auth          : page de connexion + sessions (multi-utilisateurs).
-# - caddy         : routeur interne (8080), protege par forward_auth.
-
-x-seat: &seat
-  image: lscr.io/linuxserver/chromium:latest
-  depends_on: [proxy-groupe1]
-  security_opt: [seccomp:unconfined]
-  shm_size: "1gb"
-  restart: unless-stopped
-  networks: [interne]
-  environment:
-    - PUID=1000
-    - PGID=1000
-    - TZ=${FP_TZ}
-    - LC_ALL=fr_FR.UTF-8
-    - TITLE=Sourcing
-    - CHROME_CLI=--proxy-server=http://proxy-groupe1:8080 --lang=fr-FR --start-maximized https://www.hellowork.com/
+# Base : proxy + auth (interface admin) + caddy.
+# Les POSTES (seat-N) sont dans docker-compose.override.yml, genere par
+# provision.py a partir de users.json (1 compte = 1 poste). Voir apply.sh.
 
 services:
   proxy-groupe1:
     image: ginuerzh/gost:latest
-    # Auth par WHITELIST d'IP (serveur autorise chez Oxylabs) -> pas de mot de passe.
+    # Auth Oxylabs par WHITELIST d'IP -> pas de mot de passe. Le PORT = l'IP fixe.
     command: >
       -L=http://:8080
       -F=http://isp.oxylabs.io:${OXY_PORT_G1}
     restart: unless-stopped
     networks: [interne]
 
-  seat-1: *seat
-  seat-2: *seat
-  seat-3: *seat
-  seat-4: *seat
-
   auth:
     build: ./auth
     env_file:
       - .env
     volumes:
-      - ./users.json:/app/users.json:ro
+      # rw : l'interface admin ecrit les comptes dans users.json.
+      - ./users.json:/app/users.json
     restart: unless-stopped
     networks: [interne]
 
   caddy:
     image: caddy:2
-    depends_on: [seat-1, seat-2, seat-3, seat-4, auth]
+    depends_on: [auth, proxy-groupe1]
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

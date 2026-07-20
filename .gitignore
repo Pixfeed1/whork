@@ -9,3 +9,5 @@ remote-desktop/.env
 
 # comptes bureau a distance (secrets)
 remote-desktop/users.json
+remote-desktop/Caddyfile
+remote-desktop/docker-compose.override.yml

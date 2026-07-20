@@ -1,0 +1,10 @@
+[Unit]
+Description=Declenche la synchro des postes quand les comptes changent
+
+[Path]
+# Quand l'interface admin modifie users.json, on relance la synchro.
+PathChanged=/root/whork/remote-desktop/users.json
+Unit=talens-sync.service
+
+[Install]
+WantedBy=multi-user.target
