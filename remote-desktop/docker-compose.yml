@@ -55,9 +55,17 @@ services:
     restart: unless-stopped
     networks: [interne]
 
+  # Service d'authentification (page de connexion stylee + cookie de session).
+  auth:
+    build: ./auth
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks: [interne]
+
   caddy:
     image: caddy:2
-    depends_on: [seat-1, seat-2]
+    depends_on: [seat-1, seat-2, auth]
     # Ecoute UNIQUEMENT en local sur 8080 (HTTP, pas de TLS) : c'est cPanel
     # (Apache) qui termine le HTTPS de talens.pixfeed.net et redirige ici.
     ports:

@@ -1,26 +1,35 @@
-# Routeur interne (HTTP seul, port 8080). Pas de TLS ici : c'est le serveur
-# web en frontal (cPanel/Apache, ou Cloudflare Tunnel) qui gère le HTTPS de
-# talens.pixfeed.net et redirige vers ce port.
+# Routeur interne (HTTP seul, port 8080). Le HTTPS de talens.pixfeed.net est
+# gere par cPanel/Apache en frontal, qui redirige ici.
+#
+# Auth : page de connexion stylee servie par le service "auth" (formulaire +
+# cookie de session), verifiee via forward_auth. Plus de pop-up basic-auth.
 
 :8080 {
-	# Login unique pour accéder au portail et aux sièges.
-	basicauth {
-		{$PORTAL_USER} {$PORTAL_PASS_HASH}
+	# Pages d'authentification, accessibles sans etre connecte.
+	@public path /login /login/* /logout
+	handle @public {
+		reverse_proxy auth:9000
 	}
 
-	# Siège 1 -> navigateur du consultant 1 (Selkies/noVNC sur le port 3000).
-	handle_path /s1/* {
-		reverse_proxy seat-1:3000
-	}
-
-	# Siège 2 -> navigateur du consultant 2.
-	handle_path /s2/* {
-		reverse_proxy seat-2:3000
-	}
-
-	# Page d'accueil du portail (charte de l'extension).
+	# Tout le reste est protege.
 	handle {
-		root * /srv/portal
-		file_server
+		# Verifie la session ; si non connecte, auth renvoie une redirection /login.
+		forward_auth auth:9000 {
+			uri /verify
+		}
+
+		# Siege 1 -> navigateur du consultant 1.
+		handle_path /s1/* {
+			reverse_proxy seat-1:3000
+		}
+		# Siege 2 -> navigateur du consultant 2.
+		handle_path /s2/* {
+			reverse_proxy seat-2:3000
+		}
+		# Portail (charte de l'extension).
+		handle {
+			root * /srv/portal
+			file_server
+		}
 	}
 }
