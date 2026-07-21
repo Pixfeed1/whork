@@ -50,10 +50,10 @@ for login, c in sorted(cons.items()):
     except Exception:
         continue
     pname = "proxy-" + safe(lic)
-    # Taille de fenetre propre a la licence : empreinte differente entre groupes,
-    # identique a l'interieur d'un groupe (tous les postes de la licence).
-    win = lics[lic].get("fp_win")
-    sizing = ("--window-size=%s" % win) if win else "--start-maximized"
+    # Navigateur en plein ecran (remplit toute la zone : pas de bureau Linux
+    # visible derriere). L'empreinte reste identique a l'interieur d'un groupe
+    # car tous les postes partagent la meme image de navigateur.
+    sizing = "--start-maximized --start-fullscreen"
     blocks.append(
 """  seat-%d:
     image: lscr.io/linuxserver/chromium:latest
