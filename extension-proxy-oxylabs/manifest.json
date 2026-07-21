@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Proxy Selectif Oxylabs",
+  "name": "Hellowork du collectif",
   "version": "1.4.0",
-  "description": "Route les domaines cibles via une IP fixe Oxylabs partagee par groupe, avec auth transparente et alignement de fingerprint optionnel. Navigation directe partout ailleurs.",
+  "description": "Fait sortir tout le groupe sur la meme IP fixe sur les domaines cibles, avec connexion transparente et alignement d'empreinte optionnel. Navigation directe partout ailleurs.",
   "minimum_chrome_version": "108",
   "permissions": [
     "proxy",
@@ -27,6 +27,7 @@
   },
   "action": {
     "default_popup": "popup.html",
+    "default_title": "Hellowork du collectif",
     "default_icon": {
       "128": "icon128.png"
     }

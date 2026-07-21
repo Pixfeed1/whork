@@ -1,4 +1,4 @@
-# Proxy Selectif Oxylabs — v1.4.0
+# Hellowork du collectif (v1.4.0)
 
 Extension Chrome (MV3) qui fait apparaitre tout un groupe de consultants avec la
 **meme IP fixe Oxylabs** sur des domaines cibles (ex. `hellowork.com`), pour

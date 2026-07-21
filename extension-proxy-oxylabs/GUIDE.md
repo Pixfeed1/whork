@@ -1,4 +1,4 @@
-# Guide d'utilisation — Proxy Sélectif Oxylabs
+# Guide d'utilisation : Hellowork du collectif
 
 Ce guide explique **tout**, pas à pas. Il y a deux rôles :
 

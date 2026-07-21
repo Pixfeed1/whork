@@ -1,5 +1,5 @@
 // =====================================================================
-// Proxy Selectif Oxylabs - service worker (Manifest V3, Chrome 108+)
+// Hellowork du collectif - service worker (Manifest V3, Chrome 108+)
 // v1.2.1
 //
 //  1. chrome.proxy en mode "pac_script" : seuls les domaines cibles
@@ -210,7 +210,7 @@ chrome.webRequest.onErrorOccurred.addListener(async details => {
     chrome.notifications.create("proxy-suspended", {
       type: "basic",
       iconUrl: "icon128.png",
-      title: "Proxy Selectif Oxylabs : routage suspendu",
+      title: "Hellowork du collectif : routage suspendu",
       message:
         "Le proxy refuse la connexion (identifiants invalides ou quota epuise). " +
         "La navigation continue en direct. Ouvrez l'extension pour corriger et reactiver.",
