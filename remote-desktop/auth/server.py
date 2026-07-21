@@ -314,6 +314,10 @@ details[open]>summary::before{content:"\\25BE";}
 .item .meta{color:var(--muted);font-size:12.5px;font-weight:400;}
 .item .body{padding:14px;}
 .grow{flex:1 1 auto;}
+.licgroup{margin-top:18px;}
+.lichead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:0 2px 7px;border-bottom:1px solid var(--line);margin-bottom:2px;}
+.lichead b{font-size:13.5px;}
+button[disabled]{opacity:.6;cursor:default;}
 .mini{font-size:12px;padding:8px 12px;}
 textarea{width:100%%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-s);font-size:14px;font-family:inherit;background:var(--surface);color:var(--ink);min-height:96px;resize:vertical;}
 textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
@@ -324,6 +328,9 @@ textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(
 .stage iframe{display:block;width:100%%;height:74vh;border:0;background:#0b0f16;}
 .cover{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface);padding:24px;}
 .cover .logo{width:52px;height:52px;font-size:24px;border-radius:15px;}
+.stage:fullscreen{border-radius:0;min-height:100vh;}
+.stage:fullscreen iframe{height:100vh;}
+.stagebar{display:flex;justify-content:flex-end;margin-top:12px;}
 .spin{width:26px;height:26px;margin-top:16px;border-radius:50%%;border:3px solid var(--line);border-top-color:var(--accent);animation:sp 0.8s linear infinite;}
 @keyframes sp{to{transform:rotate(360deg);}}
 @media(max-width:560px){.wrap{padding:20px 14px 48px;}.panel{padding:18px 16px;}.card{padding:26px 22px;}.stage iframe{height:68vh;}}
@@ -373,8 +380,9 @@ def portal_page(user, seat, lic_name, hw_email, hw_password):
     <a class="link" href="/logout">Se deconnecter</a>
   </div>
   <p class="sub"><span class="dot ok"></span>Ton navigateur de sourcing s'ouvre ci-dessous. Laisse cet onglet ouvert pendant que tu travailles.%s</p>
-  <div class="stage">
-    <iframe id="frame" title="Navigateur de sourcing" allow="clipboard-read; clipboard-write"></iframe>
+  <div class="stagebar"><button class="mini" type="button" onclick="fs()">Plein ecran</button></div>
+  <div class="stage" id="stage">
+    <iframe id="frame" title="Navigateur de sourcing" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
     <div id="cover" class="cover">
       <div class="logo">S</div>
       <div class="spin" id="spin"></div>
@@ -408,6 +416,7 @@ function next(){
   setTimeout(check,2500);
 }
 rl.addEventListener('click',function(){ready=false;tries=0;rl.style.display='none';check();});
+function fs(){var s=document.getElementById('stage');if(s.requestFullscreen){s.requestFullscreen();}else if(s.webkitRequestFullscreen){s.webkitRequestFullscreen();}}
 check();
 </script>
 </body></html>""" % (
@@ -467,10 +476,11 @@ def admin_page(cfg, run, msg="", err="", created=None):
     if not lic_items:
         lic_items = '<p class="sub" style="margin:8px 0 0;">Aucune licence pour le moment.</p>'
 
-    # --- consultants (cartes depliables) ---
-    cons_items = ""
+    # --- consultants, regroupes par licence ---
     active = 0
-    for name in sorted(cons):
+
+    def cons_card(name):
+        nonlocal active
         r = cons[name]
         e = html.escape(name)
         seat = int(r.get("seat", 0))
@@ -491,8 +501,8 @@ def admin_page(cfg, run, msg="", err="", created=None):
             cred += "\nLien : %s" % PORTAL_URL
         cred_attr = html.escape(cred, quote=True).replace("\n", "&#10;")
         pw_attr = html.escape(pw, quote=True)
-        cons_items += (
-            '<details class="item" data-name="' + html.escape((name + " " + licn).lower(), quote=True) + '"><summary><b>' + e + '</b><span class="meta">' + html.escape(licn) + ' &middot; poste ' + str(seat) + '</span><span class="grow"></span>' + st + '</summary>'
+        return (
+            '<details class="item" data-name="' + html.escape((name + " " + licn).lower(), quote=True) + '"><summary><b>' + e + '</b><span class="meta">poste ' + str(seat) + '</span><span class="grow"></span>' + st + '</summary>'
             '<div class="body">'
             '<div class="meta" style="margin-bottom:10px;">Mot de passe : <code class="cred" data-p="' + pw_attr + '">&bull;&bull;&bull;&bull;&bull;&bull;</code> <a href="#" class="link" onclick="return rv(this)">afficher</a></div>'
             '<form method="post" action="/admin/edit"><input type="hidden" name="username" value="' + e + '">'
@@ -506,7 +516,23 @@ def admin_page(cfg, run, msg="", err="", created=None):
             '<span class="grow"></span>'
             '<form method="post" action="/admin/delete" onsubmit="return confirm(\'Supprimer ' + e + ' ?\');" style="margin:0;"><input type="hidden" name="username" value="' + e + '"><button class="danger" type="submit">Supprimer</button></form>'
             '</div></div></details>')
-    if not cons_items:
+
+    cons_items = ""
+    for licname in sorted(lic):
+        L = lic[licname]
+        members = sorted(n for n in cons if cons[n].get("license") == licname)
+        ipt = ("IP " + html.escape(L["ip"])) if L.get("ip") else "IP non testee"
+        hwt = html.escape(L["hw_email"]) if L.get("hw_email") else "hellowork non renseigne"
+        ghead = ('<div class="lichead"><b>' + html.escape(licname) + '</b><span class="meta">port '
+                 + str(L.get("port", "?")) + ' &middot; ' + ipt + ' &middot; ' + hwt + ' &middot; '
+                 + str(len(members)) + ' consult.</span></div>')
+        body = "".join(cons_card(n) for n in members) if members else '<p class="sub" style="margin:6px 0 0;">Aucun consultant dans ce groupe.</p>'
+        cons_items += '<div class="licgroup">' + ghead + body + '</div>'
+    orphans = sorted(n for n in cons if cons[n].get("license") not in lic)
+    if orphans:
+        cons_items += ('<div class="licgroup"><div class="lichead"><b>Sans licence valide</b></div>'
+                       + "".join(cons_card(n) for n in orphans) + '</div>')
+    if not cons:
         cons_items = '<p class="sub" style="margin:8px 0 0;">Aucun consultant pour le moment.</p>'
 
     banner = ('<div class="ok">%s</div>' % html.escape(msg)) if msg else ""
@@ -594,7 +620,8 @@ def admin_page(cfg, run, msg="", err="", created=None):
         'function cp(b){var t=b.getAttribute("data-c");navigator.clipboard.writeText(t).then(function(){var o=b.textContent;b.textContent="Copie";setTimeout(function(){b.textContent=o;},1500);});}'
         'function rv(a){var c=a.previousElementSibling;var real=c.getAttribute("data-p");if(c.textContent===real){c.textContent="\\u2022\\u2022\\u2022\\u2022\\u2022\\u2022";a.textContent="afficher";}else{c.textContent=real;a.textContent="masquer";}return false;}'
         'function gp(a){var i=a.previousElementSibling;var s="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";var p="";for(var k=0;k<10;k++){p+=s.charAt(Math.floor(Math.random()*s.length));}i.value=p;i.type="text";return false;}'
-        'function flt(){var q=document.getElementById("q").value.toLowerCase();var it=document.querySelectorAll("#conslist .item");for(var i=0;i<it.length;i++){var n=it[i].getAttribute("data-name")||"";it[i].style.display=n.indexOf(q)>=0?"":"none";}}'
+        'function flt(){var q=document.getElementById("q").value.toLowerCase();var gs=document.querySelectorAll("#conslist .licgroup");for(var i=0;i<gs.length;i++){var any=false;var it=gs[i].querySelectorAll(".item");for(var j=0;j<it.length;j++){var m=(it[j].getAttribute("data-name")||"").indexOf(q)>=0;it[j].style.display=m?"":"none";if(m)any=true;}gs[i].style.display=any?"":"none";}}'
+        'document.addEventListener("submit",function(e){if(e.defaultPrevented)return;var b=e.target.querySelector("button[type=submit],button:not([type])");if(b){b.disabled=true;b.textContent="...";}});'
         '</script>')
 
     return head + lic_panel + cons_panel + import_block + '</div>' + script + '</body></html>'
