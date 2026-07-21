@@ -102,12 +102,29 @@ def load_cfg():
     return c
 
 
+def _atomic_write(path, text):
+    # Ecriture atomique (tmp + rename). CONFIG_PATH est un fichier monte seul
+    # dans Docker : le rename traverse deux systemes de fichiers et echoue
+    # (EXDEV). Dans ce cas, on ecrit directement dans le fichier monte.
+    d = os.path.dirname(path) or "."
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=d)
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except OSError:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+        with open(path, "w") as f:
+            f.write(text)
+
+
 def save_cfg(c):
-    d = os.path.dirname(CONFIG_PATH) or "."
-    fd, tmp = tempfile.mkstemp(dir=d)
-    with os.fdopen(fd, "w") as f:
-        json.dump(c, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, CONFIG_PATH)
+    _atomic_write(CONFIG_PATH, json.dumps(c, indent=2, ensure_ascii=False))
 
 
 def running_seats():
@@ -167,11 +184,7 @@ def touch_seat(seat):
         a = {}
     a[str(seat)] = int(time.time())
     try:
-        d = os.path.dirname(ACTIVITY_PATH) or "."
-        fd, tmp = tempfile.mkstemp(dir=d)
-        with os.fdopen(fd, "w") as f:
-            json.dump(a, f)
-        os.replace(tmp, ACTIVITY_PATH)
+        _atomic_write(ACTIVITY_PATH, json.dumps(a))
     except Exception:
         pass
 
