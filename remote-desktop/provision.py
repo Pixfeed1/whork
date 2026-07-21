@@ -53,7 +53,6 @@ for login, c in sorted(cons.items()):
     # Navigateur en plein ecran (remplit toute la zone : pas de bureau Linux
     # visible derriere). L'empreinte reste identique a l'interieur d'un groupe
     # car tous les postes partagent la meme image de navigateur.
-    sizing = "--start-maximized --start-fullscreen"
     blocks.append(
 """  seat-%d:
     build: ./seat
@@ -72,8 +71,8 @@ for login, c in sorted(cons.items()):
       - TZ=${FP_TZ}
       - LC_ALL=fr_FR.UTF-8
       - TITLE=Sourcing
-      - CHROME_CLI=--proxy-server=http://%s:8080 --lang=fr-FR --no-sandbox --no-first-run --no-default-browser-check %s ${START_URL:-https://buddi.hellowork.com/campaign/list}
-""" % (seat, pname, seat, pname, sizing))
+      - CHROME_CLI=--proxy-server=http://%s:8080 --lang=fr-FR --no-sandbox --no-first-run --no-default-browser-check --start-maximized ${START_URL:-https://buddi.hellowork.com/campaign/list}
+""" % (seat, pname, seat, pname))
     routes.append("\t\thandle_path /s%d/* {\n\t\t\treverse_proxy seat-%d:3000\n\t\t}" % (seat, seat))
     seat_vols.append(seat)
 
