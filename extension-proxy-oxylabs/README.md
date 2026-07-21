@@ -1,4 +1,4 @@
-# Proxy Selectif Oxylabs — v1.3.0
+# Proxy Selectif Oxylabs — v1.4.0
 
 Extension Chrome (MV3) qui fait apparaitre tout un groupe de consultants avec la
 **meme IP fixe Oxylabs** sur des domaines cibles (ex. `hellowork.com`), pour
@@ -7,8 +7,8 @@ Orbita, sans serveur / VPS** (donc compatible avec un hebergement mutualise).
 
 ## Ce que ca fait
 
-- Route **uniquement les domaines cibles** via le proxy Oxylabs (sessid partage
-  = IP identique pour tout le groupe). Le reste de la navigation reste direct.
+- Route **uniquement les domaines cibles** via le proxy Oxylabs ISP (meme port
+  = IP fixe identique pour tout le groupe). Le reste de la navigation reste direct.
 - Auth proxy **transparente** (aucune boite de dialogue).
 - Chaque consultant utilise **son propre Chrome** : plus aucun verrou de
   simultaneite (contrairement a GoLogin qui interdit d'ouvrir un profil deux
@@ -26,8 +26,9 @@ Orbita, sans serveur / VPS** (donc compatible avec un hebergement mutualise).
 Pour que le consultant n'ait **rien a taper** :
 
 1. **Admin** : ouvrir l'extension → Configuration → « Generer un code de groupe
-   (admin) ». Renseigner identifiant Oxylabs (avec le sessid du groupe), mot de
-   passe, domaines, (option) fingerprint → **Generer le code** → copier.
+   (admin) ». Renseigner l'identifiant Oxylabs ISP (prefixe `user-`), le mot de
+   passe, le **port** du groupe (= son IP fixe), les domaines, (option)
+   fingerprint → **Generer le code** → copier.
 2. **Consultant** : ouvrir l'extension → coller le code dans « Code de groupe »
    → **Appliquer le code**. Tout se remplit et se teste automatiquement.
 
@@ -40,7 +41,7 @@ saisie manuelle des reglages. La navigation reste identique.
 
 ## Strategie recommandee (du moins cher au plus cher)
 
-1. **Tester l'extension SEULE** avec 2-4 consultants + le meme `sessid`. Si la
+1. **Tester l'extension SEULE** avec 2-4 consultants + le meme port ISP. Si la
    plateforme bloquait sur l'IP (cas decrit par le client), le probleme est
    deja regle. Ne pas activer le fingerprint.
 2. **Si ca bloque encore** : activer « Aligner le fingerprint du groupe » dans
@@ -54,12 +55,12 @@ saisie manuelle des reglages. La navigation reste identique.
 1. `chrome://extensions` → activer **Mode developpeur**.
 2. **Charger l'extension non empaquetee** → choisir ce dossier.
 3. Clic sur l'icone → **Ouvrir la configuration**.
-4. Renseigner l'identifiant Oxylabs **avec le `sessid` du groupe**, le mot de
-   passe, le serveur/port, et les domaines cibles.
+4. Renseigner l'identifiant Oxylabs ISP (**prefixe `user-`**), le mot de passe,
+   le serveur `isp.oxylabs.io`, le **port du groupe**, et les domaines cibles.
 5. **Enregistrer et tester** → doit afficher l'IP du groupe.
 
-> Tous les consultants d'un meme groupe saisissent **le meme `sessid`** pour
-> partager la meme IP.
+> Tous les consultants d'un meme groupe saisissent **le meme port** pour
+> partager la meme IP fixe.
 
 ## Fichiers
 
@@ -69,7 +70,8 @@ saisie manuelle des reglages. La navigation reste identique.
 | `background.js` | Proxy PAC selectif, auth transparente, test, alignement fingerprint |
 | `options.html` / `options.js` | Configuration (proxy + fingerprint) |
 | `popup.html` / `popup.js` | Statut rapide + test |
-| `icon128.png` | **A fournir** (icone 128px, non incluse) |
+| `icon128.png` | Icone 128px (incluse) |
+| `generate-code.html` / `generate-code.js` | Generateur du code de groupe (admin) |
 
 ## Limites honnetes
 

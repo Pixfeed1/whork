@@ -28,7 +28,7 @@ Dans le générateur, renseigne (cas **ISP dédié** — une IP fixe par port) :
 
 | Champ | Quoi mettre |
 |---|---|
-| **Identifiant Oxylabs** | `customer-<TON_USERNAME_ISP>` (le préfixe `customer-` est obligatoire) |
+| **Identifiant Oxylabs** | `user-<TON_USERNAME_ISP>` (le préfixe `user-` est obligatoire pour l'ISP) |
 | **Mot de passe Oxylabs** | le mot de passe de l'utilisateur ISP (dashboard → ISP Proxies → Users → Change password) |
 | **Serveur proxy** | `isp.oxylabs.io` |
 | **Port** | le port du groupe (voir encadré ci-dessous) |
@@ -83,6 +83,6 @@ Rien de plus à faire. Ouvre hellowork.com et travaille comme d'habitude.
 
 - **Le popup dit « Routage suspendu »** : identifiants proxy invalides ou quota Oxylabs épuisé. Clique sur **« Tester la connexion »** dans le popup, ou recolle un code à jour.
 - **« Code invalide »** : le code a été mal copié (copie-le en entier, il commence par `OXY1:`).
-- **L'IP n'est pas la bonne / pas partagée** : vérifie que tous utilisent bien **le même code** (donc le même sessid).
+- **L'IP n'est pas la bonne / pas partagée** : vérifie que tous utilisent bien **le même code** (donc le même port ISP).
 
 Pour tout autre problème, contacte l'admin — une version à jour peut être fournie rapidement.
