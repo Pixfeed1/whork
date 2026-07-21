@@ -287,7 +287,7 @@ thead th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spaci
 tbody tr{transition:background .12s;} tbody tr:hover{background:var(--surface2);} tbody tr:last-child td{border-bottom:none;}
 .row2{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
 .row2>div{flex:1;min-width:160px;} .row2>div.fit{flex:0;}
-.dot{flex:none;width:9px;height:9px;min-width:9px;aspect-ratio:1/1;border-radius:50%%;display:inline-block;margin-right:7px;vertical-align:middle;box-sizing:border-box;}
+.dot{flex:0 0 9px;width:9px;height:9px;min-width:9px;max-width:9px;min-height:9px;max-height:9px;border-radius:50%%;display:inline-block;margin-right:7px;vertical-align:middle;align-self:center;box-sizing:border-box;padding:0;}
 .dot.ok{background:var(--ok);animation:blink 1.8s ease-in-out infinite;}
 .dot.warn{background:var(--warn);}
 @keyframes blink{0%%,100%%{opacity:1;}50%%{opacity:.5;}}
