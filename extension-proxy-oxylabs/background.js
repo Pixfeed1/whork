@@ -440,6 +440,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg && msg.type === "page-status") {
+    getConfig().then(cfg => {
+      const host = String((msg.host || "")).toLowerCase();
+      const domains = [...(cfg.domains || [])].map(d => String(d).trim().toLowerCase()).filter(Boolean);
+      const target = domains.some(d => host === d || host.endsWith("." + d));
+      sendResponse({
+        target,
+        active: Boolean(cfg.username && cfg.password && !cfg.suspended),
+        suspended: Boolean(cfg.suspended),
+        configured: Boolean(cfg.username && cfg.password)
+      });
+    });
+    return true;
+  }
   if (msg && msg.type === "get-status") {
     getConfig().then(cfg => {
       sendResponse({

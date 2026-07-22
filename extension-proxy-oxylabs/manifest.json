@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hellowork du collectif",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Fait sortir tout le groupe sur la meme IP fixe sur les domaines cibles, avec connexion transparente et alignement d'empreinte optionnel. Navigation directe partout ailleurs.",
   "minimum_chrome_version": "108",
   "permissions": [
@@ -21,6 +21,13 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-status.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "options_page": "options.html",
   "icons": {
     "128": "icon128.png"
