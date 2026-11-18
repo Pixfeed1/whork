@@ -726,5 +726,12 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 if (process.env.NODE_ENV !== "test") {
   const port = Number(process.env.PORT ?? 3000);
-  app.listen(port, () => console.log(`MétréToit : http://localhost:${port}`));
+  // par défaut, écoute uniquement en local (le site public passe par Apache/Nginx en HTTPS)
+  const host = process.env.HOST ?? "127.0.0.1";
+  app
+    .listen(port, host, () => console.log(`MétréToit : http://${host}:${port}`))
+    .on("error", (e: NodeJS.ErrnoException) => {
+      console.error(e.code === "EADDRINUSE" ? `Le port ${port} est déjà utilisé : une autre instance tourne déjà.` : e);
+      process.exit(1);
+    });
 }
