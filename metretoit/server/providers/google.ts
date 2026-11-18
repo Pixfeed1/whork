@@ -121,9 +121,16 @@ export async function solarDsm(
     const v = Number(rasters[k]);
     z[k] = Number.isFinite(v) && v > -500 && v < 9000 ? v : NaN;
   }
+  // emprise du GeoTIFF (indépendante du signe de la résolution) ; image orientée nord en haut
+  const [bx0, by0, bx1, by1] = img.getBoundingBox();
+  const sx = (bx1 - bx0) / W;
+  const sy = (by1 - by0) / H;
+  void ox;
+  void oy;
+  void ry;
   const pix = (i: number, jj: number) => {
-    const x = ox + (i + 0.5) * rx;
-    const y = oy + (jj + 0.5) * ry;
+    const x = bx0 + (i + 0.5) * sx;
+    const y = by1 - (jj + 0.5) * sy;
     const ll = (def === "EPSG:4326" ? [x, y] : proj4(def, "EPSG:4326", [x, y])) as LonLat;
     return toLocal(frame, ll);
   };
