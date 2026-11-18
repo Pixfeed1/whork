@@ -1,0 +1,11 @@
+services:
+  metretoit:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - metretoit-data:/data
+volumes:
+  metretoit-data:
