@@ -197,6 +197,23 @@ function Members({ owner, selfId }: { owner: boolean; selfId: string }) {
               <td className="actions">
                 {owner && u.id !== selfId && (
                   <button
+                    className="btn btn-sm"
+                    onClick={async () => {
+                      const pw = prompt(`Nouveau mot de passe pour ${u.name} (8 caractères minimum) :`);
+                      if (!pw) return;
+                      try {
+                        await api(`/org/members/${u.id}/password`, { method: "PUT", body: { password: pw } });
+                        alert(`Mot de passe de ${u.name} modifié. Communiquez-le-lui : il pourra le changer dans Entreprise → Mon mot de passe.`);
+                      } catch (er: any) {
+                        alert(er.message);
+                      }
+                    }}
+                  >
+                    Nouveau mot de passe
+                  </button>
+                )}
+                {owner && u.id !== selfId && (
+                  <button
                     className="btn btn-sm btn-danger-ghost"
                     onClick={async () => {
                       if (!confirm(`Supprimer l'accès de ${u.name} ?`)) return;

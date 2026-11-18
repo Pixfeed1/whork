@@ -115,6 +115,39 @@ describe("API", () => {
     expect((await a.req("/api/auth/me")).data.org.hasLogo).toBe(true);
   });
 
+  it("mot de passe : réinitialisation par le responsable et par lien", async () => {
+    const members = (await a.req("/api/org/members")).data;
+    const paul = members.find((m: any) => m.email === "paul@a.fr");
+    expect((await a.req(`/api/org/members/${paul.id}/password`, { password: "court" }, "PUT")).status).toBe(400);
+    expect((await a.req(`/api/org/members/${paul.id}/password`, { password: "nouveau-mdp-1" }, "PUT")).status).toBe(200);
+    expect((await b.req(`/api/org/members/${paul.id}/password`, { password: "piratage-123" }, "PUT")).status).toBe(404);
+    const p = new Client();
+    expect((await p.req("/api/auth/login", { email: "paul@a.fr", password: "nouveau-mdp-1" })).status).toBe(200);
+    // sans SMTP : l'application indique de passer par le responsable
+    expect((await new Client().req("/api/auth/forgot", { email: "paul@a.fr" })).data.mail).toBe(false);
+    // lien de réinitialisation (jeton inséré comme le ferait l'envoi d'e-mail)
+    const { run } = await import("../server/db");
+    const { createHash } = await import("node:crypto");
+    run(
+      "INSERT INTO password_resets(token_hash, user_id, expires_at) VALUES(?, ?, ?)",
+      createHash("sha256").update("jeton-test").digest("hex"),
+      paul.id,
+      new Date(Date.now() + 60000).toISOString(),
+    );
+    const c = new Client();
+    expect((await c.req("/api/auth/reset", { token: "mauvais", password: "encore-un-mdp" })).status).toBe(400);
+    expect((await c.req("/api/auth/reset", { token: "jeton-test", password: "encore-un-mdp" })).status).toBe(200);
+    expect((await c.req("/api/auth/me")).data.user.email).toBe("paul@a.fr");
+    expect((await new Client().req("/api/auth/reset", { token: "jeton-test", password: "autre-mdp-123" })).status).toBe(400);
+  });
+
+  it("configuration publique (pages légales)", async () => {
+    process.env.LEGAL_COMPANY = "GUÉRIN COUVERTURE";
+    const r = await new Client().req("/api/public/config");
+    expect(r.data.legal.company).toBe("GUÉRIN COUVERTURE");
+    expect(r.data.legal.siret).toBe("");
+  });
+
   it("quota d'essai quand les abonnements sont activés", async () => {
     process.env.STRIPE_SECRET_KEY = "sk_test_x";
     process.env.STRIPE_PRICE_ID = "price_x";

@@ -91,6 +91,25 @@ Voir `.env.example`. Principales variables :
   (essai gratuit de `TRIAL_STUDIES` études, puis abonnement). Webhook Stripe à déclarer sur
   `https://<domaine>/api/billing/webhook` (événements `checkout.session.completed`, `customer.subscription.*`).
 
+### E-mails et pages légales
+
+- `SMTP_*` : active le lien « Mot de passe oublié » envoyé par e-mail (valable 1 heure). Sans SMTP, le responsable du
+  compte attribue un nouveau mot de passe depuis Entreprise → Utilisateurs.
+- `LEGAL_*` : informations de la société affichées dans les mentions légales, les CGU et la politique de
+  confidentialité (`/mentions-legales`, `/cgu`, `/confidentialite`). Les textes sont des modèles à faire relire.
+
+## Livrer le code sur le dépôt GitHub du client
+
+Le dossier `metretoit/` est autonome. Pour le publier seul, avec son historique, dans un dépôt vide du client :
+
+```bash
+git subtree split --prefix=metretoit -b metretoit-livraison
+```
+
+```bash
+git push https://github.com/<compte-client>/<depot>.git metretoit-livraison:main
+```
+
 ## Coûts d'utilisation des API
 
 - IGN : gratuit.

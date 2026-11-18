@@ -15,6 +15,8 @@ import {
   loginOk,
 } from "./auth";
 import { ignGeocode, ignReverse, ignBuildings } from "./providers/ign";
+import { mailEnabled, sendMail, resetMail } from "./mail";
+import { randomBytes, createHash } from "node:crypto";
 import { googleKey, googleGeocode } from "./providers/google";
 import { analyzeRoof, fitFace, type SourcePref } from "./analysis/pipeline";
 import { generateReport } from "./pdf/report";
@@ -213,6 +215,55 @@ app.get("/api/auth/me", (req, res) => {
   });
 });
 
+// ---------------- mot de passe oublié ----------------
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+
+app.post(
+  "/api/auth/forgot",
+  wrap(async (req, res) => {
+    const email = str(req.body.email, 200).toLowerCase();
+    const key = `forgot|${req.ip}`;
+    if (!loginThrottle(key)) throw new HttpError(429, "Trop de demandes, réessayez dans 15 minutes");
+    loginFailed(key); // compte chaque demande pour limiter les abus
+    if (!mailEnabled()) return res.json({ ok: true, mail: false });
+    const u = one<any>("SELECT id, name, email FROM users WHERE email = ?", email);
+    if (u) {
+      const token = randomBytes(32).toString("hex");
+      run(
+        "INSERT INTO password_resets(token_hash, user_id, expires_at) VALUES(?, ?, ?)",
+        sha256(token),
+        u.id,
+        new Date(Date.now() + 3600_000).toISOString(),
+      );
+      const link = `${baseUrl(req)}/reinitialiser?token=${token}`;
+      const m = resetMail(u.name, link);
+      try {
+        await sendMail(u.email, "Réinitialisation de votre mot de passe MétréToit", m.text, m.html);
+      } catch (e) {
+        console.error("Envoi d'e-mail impossible :", e);
+        throw new HttpError(502, "L'e-mail n'a pas pu être envoyé. Réessayez plus tard.");
+      }
+    }
+    // même réponse que le compte existe ou non (pas de divulgation)
+    res.json({ ok: true, mail: true });
+  }),
+);
+
+app.post(
+  "/api/auth/reset",
+  wrap(async (req, res) => {
+    const token = str(req.body.token, 200);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (password.length < 8) throw bad("Mot de passe : 8 caractères minimum");
+    const r = one<any>("SELECT * FROM password_resets WHERE token_hash = ?", sha256(token));
+    if (!r || r.used || r.expires_at < now()) throw bad("Lien invalide ou expiré : refaites une demande");
+    run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(password), r.user_id);
+    run("UPDATE password_resets SET used = 1 WHERE user_id = ?", r.user_id);
+    await setSession(res, r.user_id);
+    res.json({ ok: true });
+  }),
+);
+
 app.put(
   "/api/auth/password",
   requireAuth,
@@ -300,6 +351,19 @@ app.post(
       now(),
     );
     res.json({ id });
+  }),
+);
+
+app.put(
+  "/api/org/members/:id/password",
+  requireOwner,
+  wrap(async (req, res) => {
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (password.length < 8) throw bad("Mot de passe : 8 caractères minimum");
+    const u = one<any>("SELECT id FROM users WHERE id = ? AND org_id = ?", req.params.id, req.user!.orgId);
+    if (!u) throw new HttpError(404, "Utilisateur introuvable");
+    run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(password), u.id);
+    res.json({ ok: true });
   }),
 );
 
@@ -617,6 +681,26 @@ app.post(
   }),
 );
 
+app.get("/api/public/config", (_req, res) => {
+  const e = process.env;
+  res.json({
+    mail: mailEnabled(),
+    legal: {
+      company: e.LEGAL_COMPANY ?? "",
+      form: e.LEGAL_FORM ?? "",
+      capital: e.LEGAL_CAPITAL ?? "",
+      address: e.LEGAL_ADDRESS ?? "",
+      siret: e.LEGAL_SIRET ?? "",
+      rcs: e.LEGAL_RCS ?? "",
+      vat: e.LEGAL_VAT ?? "",
+      director: e.LEGAL_DIRECTOR ?? "",
+      email: e.LEGAL_EMAIL ?? "",
+      phone: e.LEGAL_PHONE ?? "",
+      host: e.LEGAL_HOST ?? "",
+      updated: e.LEGAL_UPDATED ?? "",
+    },
+  });
+});
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api", (_req, res) => res.status(404).json({ error: "Route inconnue" }));

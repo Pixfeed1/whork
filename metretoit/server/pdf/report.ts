@@ -124,7 +124,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
   y = doc.y + 10;
 
   // vue aérienne
-  const imgBox = { x: M, y, w: A4.w - 2 * M, h: 300 };
+  const imgBox = { x: M, y, w: A4.w - 2 * M, h: 330 };
   await drawAerial(doc, input.model, metrics, imgBox, allPts);
   y = imgBox.y + imgBox.h + 14;
 
@@ -387,7 +387,7 @@ async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: Ro
   let x1 = Math.max(...l93.map((p) => p[0]));
   let y0 = Math.min(...l93.map((p) => p[1]));
   let y1 = Math.max(...l93.map((p) => p[1]));
-  const pad = Math.max(6, 0.25 * Math.max(x1 - x0, y1 - y0));
+  const pad = Math.max(4, 0.1 * Math.max(x1 - x0, y1 - y0));
   x0 -= pad;
   x1 += pad;
   y0 -= pad;
@@ -428,6 +428,8 @@ async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: Ro
     const b = f(e.b);
     doc.moveTo(a[0], a[1]).lineTo(b[0], b[1]).strokeColor(EDGE_COLOR[e.type]).lineWidth(2.2).stroke();
   }
+  // cotes de chaque arête directement sur la photo
+  drawEdgeLabels(doc, metrics, f, Math.max(5.5, Math.min(7.5, (box.w / (x1 - x0)) * 0.42)), 16);
   for (const fm of metrics.faces) {
     const c = f(fm.centroid);
     doc.circle(c[0], c[1], 8).fillColor("#ffffff").fill();
@@ -466,27 +468,7 @@ function drawPlan(
     doc.moveTo(a[0], a[1]).lineTo(b[0], b[1]).strokeColor(EDGE_COLOR[e.type]).lineWidth(mode === "lengths" ? 2 : 1.2).stroke();
   }
   if (mode === "lengths") {
-    const fs = Math.max(6, Math.min(9, s * 0.45));
-    doc.font(fontsInUse.reg).fontSize(fs);
-    for (const e of metrics.edges) {
-      if (e.length < 0.3) continue;
-      const a = P(e.a);
-      const b = P(e.b);
-      const segLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (segLen < 14) continue;
-      const label = nf(e.length, 2);
-      const tw = doc.widthOfString(label);
-      const mx = (a[0] + b[0]) / 2;
-      const my = (a[1] + b[1]) / 2;
-      let ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
-      if (ang > 90) ang -= 180;
-      if (ang < -90) ang += 180;
-      doc.save();
-      doc.rotate(ang, { origin: [mx, my] });
-      doc.rect(mx - tw / 2 - 2, my - fs / 2 - 1.5, tw + 4, fs + 3).fillColor("#ffffff").fillOpacity(0.9).fill();
-      doc.fillOpacity(1).fillColor(EDGE_COLOR[e.type]).text(label, mx - tw / 2, my - fs / 2 + 0.5, { lineBreak: false });
-      doc.restore();
-    }
+    drawEdgeLabels(doc, metrics, P, Math.max(6, Math.min(9, s * 0.45)), 14);
   } else {
     for (const fm of metrics.faces) {
       const face = model.faces.find((x) => x.id === fm.id)!;
@@ -517,6 +499,35 @@ function drawPlan(
   scaleBar(doc, box.x + 4, box.y + box.h - 16, s);
   northArrow(doc, box.x + box.w - 16, box.y + 4);
   doc.restore();
+}
+
+/** Étiquette de longueur au milieu de chaque arête, dans l'axe de l'arête. */
+function drawEdgeLabels(doc: PDFKit.PDFDocument, metrics: RoofMetrics, P: (p: LonLat) => XY, fs: number, minPx: number) {
+  doc.font(fontsInUse.bold).fontSize(fs);
+  for (const e of metrics.edges) {
+    if (e.length < 0.3) continue;
+    const a = P(e.a);
+    const b = P(e.b);
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < minPx) continue;
+    const label = nf(e.length, 2);
+    const tw = doc.widthOfString(label);
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    let ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+    if (ang > 90) ang -= 180;
+    if (ang < -90) ang += 180;
+    doc.save();
+    doc.rotate(ang, { origin: [mx, my] });
+    doc
+      .roundedRect(mx - tw / 2 - 2.5, my - fs / 2 - 1.8, tw + 5, fs + 3.6, 1.5)
+      .lineWidth(0.8)
+      .fillColor("#ffffff")
+      .strokeColor(EDGE_COLOR[e.type])
+      .fillOpacity(0.93)
+      .fillAndStroke();
+    doc.fillOpacity(1).fillColor("#111111").text(label, mx - tw / 2, my - fs / 2 + 0.6, { lineBreak: false });
+    doc.restore();
+  }
 }
 
 function table(

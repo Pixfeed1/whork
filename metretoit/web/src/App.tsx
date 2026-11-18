@@ -10,6 +10,8 @@ import { ReportsPage } from "./pages/Reports";
 import { SettingsPage } from "./pages/Settings";
 import { BillingPage } from "./pages/Billing";
 import { Logo } from "./components/Logo";
+import { MentionsPage, CguPage, PrivacyPage, LegalLinks } from "./pages/Legal";
+import { ForgotPage, ResetPage } from "./pages/Password";
 
 interface AuthCtx {
   me: Me | null;
@@ -45,6 +47,11 @@ export function App() {
         <Route path="/" element={me?.user ? <Navigate to="/app" replace /> : <LandingPage />} />
         <Route path="/connexion" element={me?.user ? <Navigate to="/app" replace /> : <LoginPage />} />
         <Route path="/inscription" element={me?.user ? <Navigate to="/app/entreprise?bienvenue=1" replace /> : <RegisterPage />} />
+        <Route path="/mot-de-passe-oublie" element={<ForgotPage />} />
+        <Route path="/reinitialiser" element={<ResetPage />} />
+        <Route path="/mentions-legales" element={<MentionsPage />} />
+        <Route path="/cgu" element={<CguPage />} />
+        <Route path="/confidentialite" element={<PrivacyPage />} />
         <Route path="/app/*" element={me?.user ? <AppShell /> : <Navigate to="/connexion" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -102,6 +109,7 @@ function AppShell() {
           <Route path="abonnement" element={<BillingPage />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
+        {!fullBleed && <LegalLinks />}
       </main>
     </div>
   );

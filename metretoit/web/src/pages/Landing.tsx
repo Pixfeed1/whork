@@ -118,6 +118,12 @@ export function LandingPage() {
           <Link to="/connexion">Connexion</Link>
         </div>
         <div>
+          <h4>Informations</h4>
+          <Link to="/mentions-legales">Mentions légales</Link>
+          <Link to="/cgu">Conditions d'utilisation</Link>
+          <Link to="/confidentialite">Confidentialité</Link>
+        </div>
+        <div>
           <h4>Ressources</h4>
           <a href="https://geoservices.ign.fr/lidarhd" target="_blank" rel="noreferrer">
             LiDAR HD de l'IGN

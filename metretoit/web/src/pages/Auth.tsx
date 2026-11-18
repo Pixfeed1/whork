@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../App";
 import { Logo } from "../components/Logo";
+import { LegalLinks } from "./Legal";
 
 export function LoginPage() {
   const { refresh } = useAuth();
@@ -48,9 +49,13 @@ export function LoginPage() {
         <button className="btn btn-primary btn-block btn-square" disabled={busy}>
           {busy ? "Connexion…" : "Se connecter"}
         </button>
+        <p className="small center">
+          <Link to="/mot-de-passe-oublie">Mot de passe oublié ?</Link>
+        </p>
         <p className="muted small center">
           Pas encore de compte ? <Link to="/inscription">Créer un compte</Link>
         </p>
+        <LegalLinks />
       </form>
     </div>
   );
@@ -100,7 +105,8 @@ export function RegisterForm({ initialEmail = "" }: { initialEmail?: string }) {
         {busy ? "Création…" : "Créer mon compte"}
       </button>
       <p className="tiny muted center">
-        Vos données restent les vôtres. Relevés aériens : IGN (Licence Ouverte Etalab).
+        En créant un compte, vous acceptez les <Link to="/cgu">conditions d'utilisation</Link> et la{" "}
+        <Link to="/confidentialite">politique de confidentialité</Link>.
       </p>
     </form>
   );
@@ -119,6 +125,7 @@ export function RegisterPage() {
         <p className="muted small center">
           Déjà inscrit ? <Link to="/connexion">Se connecter</Link>
         </p>
+        <LegalLinks />
       </div>
     </div>
   );
