@@ -13,6 +13,19 @@ import {
   orientationLabel,
 } from "../../shared/roof";
 import { ignOrtho, toL93 } from "../providers/ign";
+import { createRequire } from "node:module";
+
+// Police Montserrat (repli sur Helvetica si indisponible)
+const require_ = createRequire(import.meta.url);
+function fontPath(w: number): string | null {
+  try {
+    return require_.resolve(`@fontsource/montserrat/files/montserrat-latin-${w}-normal.woff`);
+  } catch {
+    return null;
+  }
+}
+const FONT_REG = fontPath(400);
+const FONT_BOLD = fontPath(600);
 
 export interface ReportOrg {
   name: string;
@@ -43,10 +56,12 @@ export interface ReportInput {
 
 const A4 = { w: 595.28, h: 841.89 };
 const M = 40;
-const BRAND = "#1f3a5f";
+const BRAND = "#0f7ea8";
+const INK = "#1b2b3f";
 const MUTED = "#6b7280";
 const FACE_FILLS = ["#fde68a", "#bfdbfe", "#bbf7d0", "#fecaca", "#ddd6fe", "#fed7aa", "#a5f3fc", "#fbcfe8", "#d9f99d", "#e5e7eb"];
 
+const fontsInUse = { reg: "Helvetica", bold: "Helvetica-Bold" };
 const nf = (n: number, d = 2) =>
   n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }).replace(/ | /g, " ");
 
@@ -64,6 +79,21 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
       Creator: "MétréToit",
     },
   });
+  let REG = "Helvetica";
+  let BOLD = "Helvetica-Bold";
+  try {
+    if (FONT_REG && FONT_BOLD) {
+      doc.registerFont("M", FONT_REG);
+      doc.registerFont("MB", FONT_BOLD);
+      doc.font("M");
+      REG = "M";
+      BOLD = "MB";
+    }
+  } catch {
+    /* police indisponible : Helvetica */
+  }
+  fontsInUse.reg = REG;
+  fontsInUse.bold = BOLD;
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((res) => doc.on("end", () => res(Buffer.concat(chunks))));
@@ -77,9 +107,9 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
   // ---------- page 1 : synthèse ----------
   header(doc, input);
   let y = 150;
-  doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(18).text("Rapport de métrage de toiture", M, y);
+  doc.fillColor(INK).font(fontsInUse.bold).fontSize(18).text("RAPPORT DE MÉTRAGE DE TOITURE", M, y, { characterSpacing: 1 });
   y += 26;
-  doc.fillColor("#111").font("Helvetica").fontSize(10.5);
+  doc.fillColor("#111").font(fontsInUse.reg).fontSize(10.5);
   doc.text(input.address, M, y, { width: A4.w - 2 * M });
   y = doc.y + 2;
   const infoLine = [
@@ -110,13 +140,13 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
   tiles.forEach(([label, val], i) => {
     const x = M + i * (tw + 8);
     doc.roundedRect(x, y, tw, 52, 6).fillColor("#f3f6fa").fill();
-    doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(label, x + 8, y + 8, { width: tw - 16 });
-    doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(14).text(val, x + 8, y + 26, { width: tw - 16 });
+    doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(8).text(label, x + 8, y + 8, { width: tw - 16 });
+    doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text(val, x + 8, y + 26, { width: tw - 16 });
   });
   y += 66;
 
   // linéaires
-  doc.fillColor("#111").font("Helvetica-Bold").fontSize(11).text("Linéaires", M, y);
+  doc.fillColor("#111").font(fontsInUse.bold).fontSize(11).text("Linéaires", M, y);
   y += 16;
   const lin = EDGE_TYPES.filter((e) => t.lengths[e.type] > 0.005);
   const colW = (A4.w - 2 * M) / 2;
@@ -124,28 +154,28 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     const x = M + (i % 2) * colW;
     const yy = y + Math.floor(i / 2) * 18;
     doc.rect(x, yy + 3, 14, 4).fillColor(e.color).fill();
-    doc.fillColor("#111").font("Helvetica").fontSize(10).text(e.label, x + 22, yy, { width: colW - 120 });
-    doc.font("Helvetica-Bold").text(`${nf(t.lengths[e.type])} ml`, x + colW - 110, yy, { width: 90, align: "right" });
+    doc.fillColor("#111").font(fontsInUse.reg).fontSize(10).text(e.label, x + 22, yy, { width: colW - 120 });
+    doc.font(fontsInUse.bold).text(`${nf(t.lengths[e.type])} ml`, x + colW - 110, yy, { width: 90, align: "right" });
   });
   y += Math.ceil(lin.length / 2) * 18 + 8;
   const warn = (input.model.meta?.warnings as string[] | undefined) ?? [];
   const src = sourceText(input.model);
-  doc.fillColor(MUTED).font("Helvetica").fontSize(7.5).text(src, M, Math.min(y, A4.h - 95), { width: A4.w - 2 * M });
+  doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7.5).text(src, M, Math.min(y, A4.h - 95), { width: A4.w - 2 * M });
   if (warn.length) doc.fillColor("#b45309").text(warn.join(" "), { width: A4.w - 2 * M });
 
   // ---------- page 2 : plan des longueurs ----------
   doc.addPage();
   header(doc, input);
-  doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(14).text("Plan des longueurs (vraie grandeur, en mètres)", M, 140);
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Plan des longueurs (vraie grandeur, en mètres)", M, 140);
   drawPlan(doc, input.model, metrics, frame, { x: M, y: 165, w: A4.w - 2 * M, h: 540 }, "lengths");
   legend(doc, A4.h - 120, metrics);
 
   // ---------- page 3 : plan des pans ----------
   doc.addPage();
   header(doc, input);
-  doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(14).text("Plan des pans : surfaces et pentes", M, 140);
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Plan des pans : surfaces et pentes", M, 140);
   drawPlan(doc, input.model, metrics, frame, { x: M, y: 165, w: A4.w - 2 * M, h: 540 }, "faces");
-  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
+  doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(8).text(
     "Chaque pan est numéroté ; la flèche indique le sens de la pente (écoulement de l'eau). Surfaces en vraie grandeur (rampant).",
     M,
     A4.h - 115,
@@ -156,7 +186,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
   doc.addPage();
   header(doc, input);
   y = 140;
-  doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(14).text("Tableau récapitulatif des métrés", M, y);
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Tableau récapitulatif des métrés", M, y);
   y += 24;
   y = table(
     doc,
@@ -179,7 +209,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     header(doc, input);
     y = 140;
   }
-  doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(12).text("Linéaires par type", M, y);
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12).text("Linéaires par type", M, y);
   y += 20;
   y = table(
     doc,
@@ -201,8 +231,8 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
       header(doc, input);
       y = 140;
     }
-    doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(12).text("Observations", M, y);
-    doc.fillColor("#111").font("Helvetica").fontSize(9.5).text(input.notes, M, y + 18, { width: A4.w - 2 * M });
+    doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12).text("Observations", M, y);
+    doc.fillColor("#111").font(fontsInUse.reg).fontSize(9.5).text(input.notes, M, y + 18, { width: A4.w - 2 * M });
     y = doc.y + 14;
   }
 
@@ -210,7 +240,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
   doc.addPage();
   header(doc, input);
   y = 140;
-  doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(12).text("Détail des arêtes", M, y);
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12).text("Détail des arêtes", M, y);
   y += 20;
   const edgesSorted = metrics.edges
     .slice()
@@ -238,7 +268,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     },
   );
   if (metrics.edges.some((e) => e.overridden))
-    doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("* type d'arête corrigé manuellement", M, doc.y + 6);
+    doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(8).text("* type d'arête corrigé manuellement", M, doc.y + 6);
 
   // pieds de page
   const range = doc.bufferedPageRange();
@@ -250,7 +280,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     const footer =
       input.org.report_footer ||
       "Métrage établi à distance à partir de relevés aériens. Les valeurs sont à confirmer sur site avant commande des matériaux.";
-    doc.fillColor(MUTED).font("Helvetica").fontSize(7).text(footer, M, fy + 6, { width: A4.w - 2 * M - 80, lineBreak: true, height: 30 });
+    doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7).text(footer, M, fy + 6, { width: A4.w - 2 * M - 80, lineBreak: true, height: 30 });
     doc.text(`${input.number} · page ${i + 1}/${range.count}`, A4.w - M - 120, fy + 6, { width: 120, align: "right" });
   }
   doc.end();
@@ -280,10 +310,10 @@ function header(doc: PDFKit.PDFDocument, input: ReportInput) {
       lx = M;
     } catch {
       /* format de logo non supporté par pdfkit (ex. WebP) */
-      doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(16).text(o.name, lx, 40, { width: 260 });
+      doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(16).text(o.name, lx, 40, { width: 260 });
     }
   } else {
-    doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(16).text(o.name, lx, 40, { width: 260 });
+    doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(16).text(o.name, lx, 40, { width: 260 });
   }
   const lines = [
     o.name,
@@ -294,8 +324,8 @@ function header(doc: PDFKit.PDFDocument, input: ReportInput) {
     o.website,
     o.siret ? `SIRET ${o.siret}` : "",
   ].filter((s) => s && String(s).trim());
-  doc.fillColor("#111").font("Helvetica-Bold").fontSize(9).text(lines[0] ?? "", A4.w - M - 220, 26, { width: 220, align: "right" });
-  doc.font("Helvetica").fontSize(8).fillColor(MUTED);
+  doc.fillColor("#111").font(fontsInUse.bold).fontSize(9).text(lines[0] ?? "", A4.w - M - 220, 26, { width: 220, align: "right" });
+  doc.font(fontsInUse.reg).fontSize(8).fillColor(MUTED);
   for (const l of lines.slice(1)) doc.text(String(l), { width: 220, align: "right" });
   doc.moveTo(M, 118).lineTo(A4.w - M, 118).strokeColor("#e5e7eb").lineWidth(0.8).stroke();
 }
@@ -303,7 +333,7 @@ function header(doc: PDFKit.PDFDocument, input: ReportInput) {
 function legend(doc: PDFKit.PDFDocument, y: number, metrics: RoofMetrics) {
   const used = EDGE_TYPES.filter((e) => metrics.totals.lengths[e.type] > 0.005);
   let x = M;
-  doc.font("Helvetica").fontSize(8.5);
+  doc.font(fontsInUse.reg).fontSize(8.5);
   for (const e of used) {
     const label = `${e.label} : ${nf(metrics.totals.lengths[e.type])} ml`;
     const w = doc.widthOfString(label) + 30;
@@ -336,7 +366,7 @@ function northArrow(doc: PDFKit.PDFDocument, x: number, y: number, light = false
   const c = light ? "#ffffff" : "#111111";
   doc.save();
   doc.moveTo(x, y).lineTo(x - 6, y + 16).lineTo(x, y + 12).lineTo(x + 6, y + 16).closePath().fillColor(c).fill();
-  doc.fillColor(c).font("Helvetica-Bold").fontSize(9).text("N", x - 4, y + 18, { lineBreak: false });
+  doc.fillColor(c).font(fontsInUse.bold).fontSize(9).text("N", x - 4, y + 18, { lineBreak: false });
   doc.restore();
 }
 
@@ -346,7 +376,7 @@ function scaleBar(doc: PDFKit.PDFDocument, x: number, y: number, s: number, ligh
   const c = light ? "#ffffff" : "#111111";
   doc.save();
   doc.rect(x, y, m * s, 4).fillColor(c).fill();
-  doc.fillColor(c).font("Helvetica").fontSize(8).text(`${m} m`, x, y + 6, { lineBreak: false });
+  doc.fillColor(c).font(fontsInUse.reg).fontSize(8).text(`${m} m`, x, y + 6, { lineBreak: false });
   doc.restore();
 }
 
@@ -401,7 +431,7 @@ async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: Ro
   for (const fm of metrics.faces) {
     const c = f(fm.centroid);
     doc.circle(c[0], c[1], 8).fillColor("#ffffff").fill();
-    doc.fillColor("#111").font("Helvetica-Bold").fontSize(8).text(String(fm.index), c[0] - 8, c[1] - 3.5, { width: 16, align: "center" });
+    doc.fillColor("#111").font(fontsInUse.bold).fontSize(8).text(String(fm.index), c[0] - 8, c[1] - 3.5, { width: 16, align: "center" });
   }
   const s = box.w / (x1 - x0);
   scaleBar(doc, box.x + 12, box.y + box.h - 22, s, hasImage);
@@ -437,7 +467,7 @@ function drawPlan(
   }
   if (mode === "lengths") {
     const fs = Math.max(6, Math.min(9, s * 0.45));
-    doc.font("Helvetica").fontSize(fs);
+    doc.font(fontsInUse.reg).fontSize(fs);
     for (const e of metrics.edges) {
       if (e.length < 0.3) continue;
       const a = P(e.a);
@@ -479,8 +509,8 @@ function drawPlan(
           .fillColor("#374151")
           .fill();
       }
-      doc.fillColor("#111").font("Helvetica-Bold").fontSize(10).text(String(fm.index), c[0] - 20, c[1] - 22, { width: 40, align: "center" });
-      doc.font("Helvetica").fontSize(7.5).text(`${nf(fm.area, 1)} m²`, c[0] - 30, c[1] - 10, { width: 60, align: "center" });
+      doc.fillColor("#111").font(fontsInUse.bold).fontSize(10).text(String(fm.index), c[0] - 20, c[1] - 22, { width: 40, align: "center" });
+      doc.font(fontsInUse.reg).fontSize(7.5).text(`${nf(fm.area, 1)} m²`, c[0] - 30, c[1] - 10, { width: 60, align: "center" });
       doc.text(`${nf(fm.pitchDeg, 0)}° · ${nf(fm.pitchPct, 0)} % · ${orientationLabel(fm.azimuthDeg)}`, c[0] - 40, c[1] - 1, { width: 80, align: "center" });
     }
   }
@@ -502,7 +532,7 @@ function table(
   const drawRow = (cells: string[], yy: number, opts: { bold?: boolean; fill?: string; color?: string }) => {
     let x = M;
     if (opts.fill) doc.rect(M, yy, widths.reduce((a, b) => a + b, 0), rowH).fillColor(opts.fill).fill();
-    doc.font(opts.bold ? "Helvetica-Bold" : "Helvetica").fontSize(8.5).fillColor(opts.color ?? "#111");
+    doc.font(opts.bold ? fontsInUse.bold : fontsInUse.reg).fontSize(8.5).fillColor(opts.color ?? "#111");
     cells.forEach((c, i) => {
       doc.text(c, x + 5, yy + 4.5, { width: widths[i] - 10, lineBreak: false, ellipsis: true });
       x += widths[i];

@@ -24,11 +24,12 @@ process.on("unhandledRejection", async (e) => {
 
 step("accueil + inscription");
 await page.goto(BASE);
-await page.getByRole("link", { name: "Créer un compte" }).click();
+await page.getByRole("heading", { name: /métré de toiture/ }).waitFor();
+await page.goto(`${BASE}/inscription`);
 const email = `e2e-${Date.now()}@exemple.fr`;
 await page.getByLabel("Entreprise").fill("Guérin Couverture (test)");
 await page.getByLabel("Votre nom").fill("Testeur");
-await page.getByLabel("E-mail").fill(email);
+await page.getByLabel("E-mail", { exact: true }).fill(email);
 await page.getByLabel(/Mot de passe/).fill("motdepasse-e2e");
 await page.getByRole("button", { name: "Créer mon compte" }).click();
 await page.waitForURL(/entreprise/);

@@ -9,6 +9,7 @@ import { StudyPage } from "./pages/Study";
 import { ReportsPage } from "./pages/Reports";
 import { SettingsPage } from "./pages/Settings";
 import { BillingPage } from "./pages/Billing";
+import { Logo } from "./components/Logo";
 
 interface AuthCtx {
   me: Me | null;
@@ -61,9 +62,8 @@ function AppShell() {
   return (
     <div className={`shell ${fullBleed ? "shell-full" : ""}`}>
       <header className="topbar">
-        <Link to="/app" className="brand">
-          <img src="/favicon.svg" alt="" width={28} height={28} />
-          <span>MétréToit</span>
+        <Link to="/app" className="brand" aria-label="MétréToit">
+          <Logo size={34} />
         </Link>
         <button className="burger" aria-label="Menu" onClick={() => setMenu(!menu)}>
           ☰
