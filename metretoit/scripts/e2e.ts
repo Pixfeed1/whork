@@ -40,7 +40,7 @@ await page.getByText("Coordonnées enregistrées").waitFor();
 await page.screenshot({ path: `${OUT}/01-entreprise.png` });
 
 step("nouvelle étude par adresse");
-await page.getByRole("link", { name: "+ Nouvelle étude" }).click();
+await page.getByRole("link", { name: "Nouvelle étude" }).first().click();
 await page.waitForURL(/nouvelle/);
 await page.getByRole("heading", { name: "Nouvelle étude" }).waitFor();
 await page.getByLabel("Adresse").fill("Rue des Dunes 17580 Le Bois-Plage-en-Ré");
@@ -118,7 +118,12 @@ step("historique");
 await page.goto(`${BASE}/app/rapports`);
 await page.getByText(reports[0].number).waitFor();
 await page.goto(`${BASE}/app`);
+await page.locator(".study-card").first().waitFor();
+await page.getByRole("button", { name: "Liste" }).click();
 await page.locator("tbody tr").first().waitFor();
+await page.getByRole("button", { name: "Carte" }).click();
+await page.getByTestId("studies-map").waitFor();
+await page.getByRole("button", { name: "Vignettes" }).click();
 await page.screenshot({ path: `${OUT}/07-etudes.png` });
 
 step("mobile");

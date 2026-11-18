@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PageHead } from "./Help";
 import { useSearchParams } from "react-router-dom";
 import { api, fmtDate, type Org } from "../api";
 import { useAuth } from "../App";
@@ -44,9 +45,7 @@ export function SettingsPage() {
   };
   return (
     <div className="page narrow">
-      <div className="page-head">
-        <h1>Entreprise</h1>
-      </div>
+      <PageHead title="Entreprise" />
       {params.get("bienvenue") && (
         <div className="alert alert-info">
           Bienvenue ! Renseignez vos coordonnées et votre logo : ils apparaîtront sur chaque rapport PDF.
@@ -279,6 +278,7 @@ function PasswordCard() {
   const [msg, setMsg] = useState("");
   return (
     <form
+      id="mot-de-passe"
       className="card form-grid"
       onSubmit={async (e) => {
         e.preventDefault();

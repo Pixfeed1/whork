@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS usage_events (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS usage_org ON usage_events(org_id, kind, created_at);
+CREATE TABLE IF NOT EXISTS thumbs (
+  study_id TEXT PRIMARY KEY REFERENCES studies(id) ON DELETE CASCADE,
+  img BLOB NOT NULL,
+  bbox TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash TEXT PRIMARY KEY,

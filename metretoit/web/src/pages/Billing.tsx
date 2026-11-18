@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PageHead } from "./Help";
 import { useSearchParams } from "react-router-dom";
 import { api, type Quota } from "../api";
 import { useAuth } from "../App";
@@ -24,9 +25,7 @@ export function BillingPage() {
   };
   return (
     <div className="page narrow">
-      <div className="page-head">
-        <h1>Abonnement</h1>
-      </div>
+      <PageHead title="Abonnement" />
       {params.get("ok") && <div className="alert alert-ok">Merci ! Votre abonnement est en cours d'activation.</div>}
       {err && <div className="alert alert-error">{err}</div>}
       {!info.enabled ? (

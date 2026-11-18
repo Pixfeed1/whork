@@ -14,7 +14,7 @@ import {
   loginFailed,
   loginOk,
 } from "./auth";
-import { ignGeocode, ignReverse, ignBuildings } from "./providers/ign";
+import { ignGeocode, ignReverse, ignBuildings, ignOrtho, toL93 } from "./providers/ign";
 import { mailEnabled, sendMail, resetMail } from "./mail";
 import { gateMiddleware, gateGet, gatePost } from "./gate";
 import { randomBytes, createHash } from "node:crypto";
@@ -531,6 +531,52 @@ app.put("/api/studies/:id", requireAuth, (req, res) => {
   if (b.model) saveModel(s.id, sanitizeModel(b.model), true);
   res.json(studyRow(one("SELECT * FROM studies WHERE id = ?", s.id), true));
 });
+
+// vignette : photo aérienne IGN + contour des pans (SVG, mis à jour à chaque modification)
+const TW = 640;
+const TH = 320;
+app.get(
+  "/api/studies/:id/vignette.svg",
+  requireAuth,
+  wrap(async (req, res) => {
+    const s = getStudy(req);
+    const model: RoofModel = JSON.parse(s.model);
+    let t = one<any>("SELECT img, bbox FROM thumbs WHERE study_id = ?", s.id);
+    if (!t) {
+      const pts = model.faces.flatMap((f) => f.ring).concat(model.footprint ?? []);
+      const l93 = (pts.length ? pts : [[s.lon, s.lat] as [number, number]]).map((p) => toL93(p));
+      const xs = l93.map((p) => p[0]);
+      const ys = l93.map((p) => p[1]);
+      const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+      const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+      const half = Math.max(16, (Math.max(...xs) - Math.min(...xs)) * 0.75, (Math.max(...ys) - Math.min(...ys)) * 1.5);
+      const bbox: [number, number, number, number] = [cx - half, cy - half / 2, cx + half, cy + half / 2];
+      let img: Buffer;
+      try {
+        img = await ignOrtho(bbox, TW, TH);
+      } catch {
+        return res.status(404).end();
+      }
+      run("INSERT OR REPLACE INTO thumbs(study_id, img, bbox) VALUES(?, ?, ?)", s.id, img, JSON.stringify(bbox));
+      t = { img, bbox: JSON.stringify(bbox) };
+    }
+    const [x0, y0, x1, y1] = JSON.parse(t.bbox) as number[];
+    const px = (p: [number, number]) => {
+      const q = toL93(p);
+      return `${(((q[0] - x0) / (x1 - x0)) * TW).toFixed(1)},${(((y1 - q[1]) / (y1 - y0)) * TH).toFixed(1)}`;
+    };
+    const polys = model.faces
+      .map((f) => `<polygon points="${f.ring.map(px).join(" ")}"/>`)
+      .join("");
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("Cache-Control", "private, max-age=120");
+    res.send(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TW} ${TH}" preserveAspectRatio="xMidYMid slice">` +
+        `<image href="data:image/jpeg;base64,${Buffer.from(t.img).toString("base64")}" width="${TW}" height="${TH}"/>` +
+        `<g fill="rgba(15,126,168,0.22)" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round">${polys}</g></svg>`,
+    );
+  }),
+);
 
 app.delete("/api/studies/:id", requireAuth, (req, res) => {
   const s = getStudy(req);

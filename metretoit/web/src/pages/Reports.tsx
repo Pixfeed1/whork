@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PageHead } from "./Help";
 import { Link } from "react-router-dom";
 import { api, fmtDateTime, type Report } from "../api";
 
@@ -12,9 +13,7 @@ export function ReportsPage() {
   }, []);
   return (
     <div className="page">
-      <div className="page-head">
-        <h1>Historique des rapports</h1>
-      </div>
+      <PageHead title="Historique des rapports" />
       {err && <div className="alert alert-error">{err}</div>}
       {rows === null ? (
         <p className="muted">Chargement…</p>
