@@ -16,6 +16,7 @@ import {
 } from "./auth";
 import { ignGeocode, ignReverse, ignBuildings } from "./providers/ign";
 import { mailEnabled, sendMail, resetMail } from "./mail";
+import { gateMiddleware, gateGet, gatePost } from "./gate";
 import { randomBytes, createHash } from "node:crypto";
 import { googleKey, googleGeocode } from "./providers/google";
 import { analyzeRoof, fitFace, type SourcePref } from "./analysis/pipeline";
@@ -41,6 +42,11 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), (req
   handleStripeEvent(evt);
   res.json({ received: true });
 });
+
+// page d'accès verrouillée (devant tout le site, si un identifiant est défini)
+app.get("/acces", gateGet);
+app.post("/acces", express.urlencoded({ extended: false, limit: "10kb" }), gatePost);
+app.use(gateMiddleware);
 
 app.use(express.json({ limit: "6mb" }));
 app.use(loadUser);

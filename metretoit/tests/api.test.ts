@@ -159,4 +159,27 @@ describe("API", () => {
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_PRICE_ID;
   });
+
+  it("page d'accès verrouillée devant tout le site", async () => {
+    const { setSetting, run } = await import("../server/db");
+    const bcrypt = (await import("bcryptjs")).default;
+    setSetting("gate_user", "ridha");
+    setSetting("gate_hash", bcrypt.hashSync("MotDePasseTest42", 4));
+    const r1 = await fetch(base + "/api/auth/me", { redirect: "manual" });
+    expect(r1.status).toBe(401);
+    const r2 = await fetch(base + "/app", { redirect: "manual" });
+    expect(r2.status).toBe(302);
+    expect(r2.headers.get("location")).toMatch(/^\/acces/);
+    expect((await fetch(base + "/acces")).status).toBe(200);
+    const bad = await fetch(base + "/acces", { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "identifiant=ridha&motdepasse=faux" });
+    expect(bad.status).toBe(401);
+    const ok = await fetch(base + "/acces", { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "identifiant=Ridha&motdepasse=MotDePasseTest42&next=%2F%2Fevil.com" });
+    expect(ok.status).toBe(303);
+    expect(ok.headers.get("location")).toBe("/");
+    const cookie = ok.headers.get("set-cookie")!.split(";")[0];
+    const r3 = await fetch(base + "/api/auth/me", { headers: { Cookie: cookie } });
+    expect(r3.status).toBe(200);
+    run("DELETE FROM settings WHERE key IN ('gate_user', 'gate_hash')");
+    expect((await fetch(base + "/api/auth/me")).status).toBe(200);
+  });
 });

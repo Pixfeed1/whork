@@ -7,7 +7,7 @@ import { one, getSetting, setSetting } from "./db";
 const COOKIE = "mt_session";
 const MAX_AGE_S = 30 * 24 * 3600;
 
-function secret(): Uint8Array {
+export function authSecret(): Uint8Array {
   let s = process.env.AUTH_SECRET;
   if (!s) {
     s = getSetting("auth_secret");
@@ -44,7 +44,7 @@ export async function setSession(res: Response, userId: string) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${MAX_AGE_S}s`)
-    .sign(secret());
+    .sign(authSecret());
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -72,7 +72,7 @@ export async function loadUser(req: Request, _res: Response, next: NextFunction)
   const token = readCookie(req, COOKIE);
   if (token) {
     try {
-      const { payload } = await jwtVerify(token, secret());
+      const { payload } = await jwtVerify(token, authSecret());
       const u = one<any>("SELECT id, org_id, email, name, role FROM users WHERE id = ?", payload.sub);
       if (u) req.user = { id: u.id, orgId: u.org_id, email: u.email, name: u.name, role: u.role };
     } catch {

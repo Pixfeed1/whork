@@ -91,6 +91,25 @@ Voir `.env.example`. Principales variables :
   (essai gratuit de `TRIAL_STUDIES` études, puis abonnement). Webhook Stripe à déclarer sur
   `https://<domaine>/api/billing/webhook` (événements `checkout.session.completed`, `customer.subscription.*`).
 
+### Page d'accès verrouillée (phase de test)
+
+Pour protéger tout le site (page d'accueil comprise) par un identifiant et un mot de passe, en SSH :
+
+```bash
+npm run acces -- ridha
+```
+
+Le mot de passe est demandé deux fois (saisie invisible, 10 caractères minimum). Effet immédiat, sans
+redémarrage. Changer le mot de passe referme les accès déjà ouverts.
+
+```bash
+npm run acces -- --statut
+```
+
+```bash
+npm run acces -- --off
+```
+
 ### E-mails et pages légales
 
 - `SMTP_*` : active le lien « Mot de passe oublié » envoyé par e-mail (valable 1 heure). Sans SMTP, le responsable du
