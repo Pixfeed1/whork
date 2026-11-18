@@ -45,8 +45,17 @@ export interface GeocodeResult {
   type?: string;
 }
 
-export async function ignGeocode(q: string, limit = 6, autocomplete = true): Promise<GeocodeResult[]> {
+export async function ignGeocode(
+  q: string,
+  limit = 6,
+  autocomplete = true,
+  near?: { lon: number; lat: number },
+): Promise<GeocodeResult[]> {
   const u = new URL(`${IGN_BASE}/geocodage/search`);
+  if (near) {
+    u.searchParams.set("lon", String(near.lon));
+    u.searchParams.set("lat", String(near.lat));
+  }
   u.searchParams.set("q", q);
   u.searchParams.set("limit", String(limit));
   u.searchParams.set("index", "address");

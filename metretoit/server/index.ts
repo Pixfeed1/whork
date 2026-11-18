@@ -1,0 +1,640 @@
+import express, { type Request, type Response, type NextFunction } from "express";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { one, all, run, uid, now, logUsage } from "./db";
+import {
+  loadUser,
+  requireAuth,
+  requireOwner,
+  hashPassword,
+  checkPassword,
+  setSession,
+  clearSession,
+  loginThrottle,
+  loginFailed,
+  loginOk,
+} from "./auth";
+import { ignGeocode, ignReverse, ignBuildings } from "./providers/ign";
+import { googleKey, googleGeocode } from "./providers/google";
+import { analyzeRoof, fitFace, type SourcePref } from "./analysis/pipeline";
+import { generateReport } from "./pdf/report";
+import { computeMetrics, type RoofModel, type EdgeType, EDGE_TYPES } from "../shared/roof";
+import {
+  billingEnabled,
+  quotaStatus,
+  createCheckout,
+  createPortal,
+  verifyWebhook,
+  handleStripeEvent,
+} from "./billing";
+
+export const app = express();
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+// webhook Stripe : corps brut, avant le parseur JSON
+app.post("/api/billing/webhook", express.raw({ type: "application/json" }), (req, res) => {
+  const evt = verifyWebhook(req.body as Buffer, req.header("stripe-signature"));
+  if (!evt) return res.status(400).send("signature invalide");
+  handleStripeEvent(evt);
+  res.json({ received: true });
+});
+
+app.use(express.json({ limit: "6mb" }));
+app.use(loadUser);
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  next();
+});
+
+const wrap =
+  (fn: (req: Request, res: Response) => Promise<unknown> | unknown) => (req: Request, res: Response, next: NextFunction) =>
+    Promise.resolve(fn(req, res)).catch(next);
+
+class HttpError extends Error {
+  constructor(
+    public status: number,
+    msg: string,
+  ) {
+    super(msg);
+  }
+}
+const bad = (msg: string) => new HttpError(400, msg);
+const str = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+const baseUrl = (req: Request) => process.env.PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`;
+
+// ---------------- validation du modèle ----------------
+const EDGE_SET = new Set(EDGE_TYPES.map((e) => e.type));
+function validLonLat(p: unknown): p is [number, number] {
+  return Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90;
+}
+function sanitizeModel(m: any): RoofModel {
+  if (!m || typeof m !== "object") throw bad("Modèle invalide");
+  if (!validLonLat(m.origin)) throw bad("Origine invalide");
+  if (!Array.isArray(m.faces) || m.faces.length > 400) throw bad("Pans invalides");
+  const faces = m.faces.map((f: any) => {
+    if (!Array.isArray(f.ring) || f.ring.length < 3 || f.ring.length > 1000 || !f.ring.every(validLonLat))
+      throw bad("Contour de pan invalide");
+    const pitch = num(f.pitchDeg);
+    const az = num(f.azimuthDeg);
+    if (!(pitch >= 0 && pitch <= 89) || !Number.isFinite(az)) throw bad("Pente ou orientation invalide");
+    return {
+      id: str(f.id, 60) || uid(),
+      ring: f.ring.map((p: number[]) => [p[0], p[1]]),
+      pitchDeg: pitch,
+      azimuthDeg: ((az % 360) + 360) % 360,
+      plane: f.plane && validLonLat(f.plane.anchor) && Number.isFinite(f.plane.z) ? { anchor: [f.plane.anchor[0], f.plane.anchor[1]], z: f.plane.z } : null,
+      source: ["auto", "manual", "google"].includes(f.source) ? f.source : "manual",
+    };
+  });
+  const edgeOverrides: Record<string, EdgeType> = {};
+  for (const [k, v] of Object.entries(m.edgeOverrides ?? {})) {
+    if (typeof k === "string" && k.length < 200 && EDGE_SET.has(v as EdgeType)) edgeOverrides[k] = v as EdgeType;
+  }
+  const footprint = Array.isArray(m.footprint) && m.footprint.every(validLonLat) ? m.footprint.slice(0, 2000) : null;
+  return {
+    version: 1,
+    origin: [m.origin[0], m.origin[1]],
+    faces,
+    edgeOverrides,
+    footprint,
+    meta: m.meta && typeof m.meta === "object" ? JSON.parse(JSON.stringify(m.meta).slice(0, 50000)) : {},
+  };
+}
+
+function studyRow(s: any, withModel = false) {
+  return {
+    id: s.id,
+    title: s.title,
+    address: s.address,
+    clientName: s.client_name,
+    notes: s.notes,
+    lon: s.lon,
+    lat: s.lat,
+    totalArea: s.total_area,
+    faceCount: s.face_count,
+    edited: !!s.edited,
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
+    reportCount: s.report_count ?? undefined,
+    model: withModel ? JSON.parse(s.model) : undefined,
+  };
+}
+
+function getStudy(req: Request) {
+  const s = one<any>("SELECT * FROM studies WHERE id = ? AND org_id = ?", req.params.id, req.user!.orgId);
+  if (!s) throw new HttpError(404, "Étude introuvable");
+  return s;
+}
+
+function orgPublic(o: any) {
+  return {
+    id: o.id,
+    name: o.name,
+    address: o.address,
+    postcode: o.postcode,
+    city: o.city,
+    phone: o.phone,
+    email: o.email,
+    website: o.website,
+    siret: o.siret,
+    reportFooter: o.report_footer,
+    wastePct: o.waste_pct,
+    hasLogo: !!o.logo_mime,
+    plan: o.plan,
+    planStatus: o.plan_status,
+  };
+}
+
+// ---------------- authentification ----------------
+app.post(
+  "/api/auth/register",
+  wrap(async (req, res) => {
+    if (process.env.ALLOW_SIGNUP === "false" && one("SELECT id FROM users LIMIT 1"))
+      throw new HttpError(403, "Les inscriptions sont fermées");
+    const orgName = str(req.body.orgName, 120);
+    const name = str(req.body.name, 120);
+    const email = str(req.body.email, 200).toLowerCase();
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!orgName || !name) throw bad("Nom de l'entreprise et nom requis");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad("Adresse e-mail invalide");
+    if (password.length < 8) throw bad("Mot de passe : 8 caractères minimum");
+    if (one("SELECT id FROM users WHERE email = ?", email)) throw bad("Un compte existe déjà avec cet e-mail");
+    const orgId = uid();
+    const userId = uid();
+    run("INSERT INTO organizations(id, name, email, created_at) VALUES(?, ?, ?, ?)", orgId, orgName, email, now());
+    run(
+      "INSERT INTO users(id, org_id, email, name, password_hash, role, created_at) VALUES(?, ?, ?, ?, ?, 'owner', ?)",
+      userId,
+      orgId,
+      email,
+      name,
+      await hashPassword(password),
+      now(),
+    );
+    await setSession(res, userId);
+    res.json({ ok: true });
+  }),
+);
+
+app.post(
+  "/api/auth/login",
+  wrap(async (req, res) => {
+    const email = str(req.body.email, 200).toLowerCase();
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    const key = `${req.ip}|${email}`;
+    if (!loginThrottle(key)) throw new HttpError(429, "Trop de tentatives, réessayez dans 15 minutes");
+    const u = one<any>("SELECT * FROM users WHERE email = ?", email);
+    if (!u || !(await checkPassword(password, u.password_hash))) {
+      loginFailed(key);
+      throw new HttpError(401, "E-mail ou mot de passe incorrect");
+    }
+    loginOk(key);
+    await setSession(res, u.id);
+    res.json({ ok: true });
+  }),
+);
+
+app.post("/api/auth/logout", (_req, res) => {
+  clearSession(res);
+  res.json({ ok: true });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  if (!req.user) return res.json({ user: null });
+  const org = one<any>("SELECT * FROM organizations WHERE id = ?", req.user.orgId);
+  res.json({
+    user: req.user,
+    org: orgPublic(org),
+    features: { google: !!googleKey(), billing: billingEnabled() },
+    quota: quotaStatus(req.user.orgId),
+  });
+});
+
+app.put(
+  "/api/auth/password",
+  requireAuth,
+  wrap(async (req, res) => {
+    const u = one<any>("SELECT * FROM users WHERE id = ?", req.user!.id);
+    const next = typeof req.body.next === "string" ? req.body.next : "";
+    if (!(await checkPassword(String(req.body.current ?? ""), u.password_hash))) throw bad("Mot de passe actuel incorrect");
+    if (next.length < 8) throw bad("Nouveau mot de passe : 8 caractères minimum");
+    run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(next), u.id);
+    res.json({ ok: true });
+  }),
+);
+
+// ---------------- entreprise ----------------
+app.get("/api/org", requireAuth, (req, res) => {
+  res.json(orgPublic(one("SELECT * FROM organizations WHERE id = ?", req.user!.orgId)));
+});
+
+app.put("/api/org", requireOwner, (req, res) => {
+  const b = req.body ?? {};
+  const waste = Number(b.wastePct);
+  run(
+    `UPDATE organizations SET name = ?, address = ?, postcode = ?, city = ?, phone = ?, email = ?, website = ?, siret = ?, report_footer = ?, waste_pct = ? WHERE id = ?`,
+    str(b.name, 120) || "Mon entreprise",
+    str(b.address, 200),
+    str(b.postcode, 20),
+    str(b.city, 100),
+    str(b.phone, 40),
+    str(b.email, 200),
+    str(b.website, 200),
+    str(b.siret, 30),
+    str(b.reportFooter, 600),
+    Number.isFinite(waste) ? Math.max(0, Math.min(50, waste)) : 10,
+    req.user!.orgId,
+  );
+  res.json(orgPublic(one("SELECT * FROM organizations WHERE id = ?", req.user!.orgId)));
+});
+
+app.put("/api/org/logo", requireOwner, (req, res) => {
+  const m = /^data:(image\/(png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.dataUrl ?? ""));
+  if (!m) throw bad("Logo : PNG ou JPEG attendu");
+  const buf = Buffer.from(m[3], "base64");
+  if (buf.length > 2_000_000) throw bad("Logo trop lourd (2 Mo max)");
+  run("UPDATE organizations SET logo = ?, logo_mime = ? WHERE id = ?", buf, m[1], req.user!.orgId);
+  res.json({ ok: true });
+});
+
+app.delete("/api/org/logo", requireOwner, (req, res) => {
+  run("UPDATE organizations SET logo = NULL, logo_mime = NULL WHERE id = ?", req.user!.orgId);
+  res.json({ ok: true });
+});
+
+app.get("/api/org/logo", requireAuth, (req, res) => {
+  const o = one<any>("SELECT logo, logo_mime FROM organizations WHERE id = ?", req.user!.orgId);
+  if (!o?.logo) return res.status(404).end();
+  res.setHeader("Content-Type", o.logo_mime);
+  res.setHeader("Cache-Control", "private, max-age=60");
+  res.send(Buffer.from(o.logo));
+});
+
+app.get("/api/org/members", requireAuth, (req, res) => {
+  res.json(all("SELECT id, name, email, role, created_at AS createdAt FROM users WHERE org_id = ? ORDER BY created_at", req.user!.orgId));
+});
+
+app.post(
+  "/api/org/members",
+  requireOwner,
+  wrap(async (req, res) => {
+    const name = str(req.body.name, 120);
+    const email = str(req.body.email, 200).toLowerCase();
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    const role = req.body.role === "owner" ? "owner" : "member";
+    if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad("Nom et e-mail valides requis");
+    if (password.length < 8) throw bad("Mot de passe provisoire : 8 caractères minimum");
+    if (one("SELECT id FROM users WHERE email = ?", email)) throw bad("Cet e-mail est déjà utilisé");
+    const id = uid();
+    run(
+      "INSERT INTO users(id, org_id, email, name, password_hash, role, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+      id,
+      req.user!.orgId,
+      email,
+      name,
+      await hashPassword(password),
+      role,
+      now(),
+    );
+    res.json({ id });
+  }),
+);
+
+app.delete("/api/org/members/:id", requireOwner, (req, res) => {
+  if (req.params.id === req.user!.id) throw bad("Vous ne pouvez pas supprimer votre propre compte");
+  run("DELETE FROM users WHERE id = ? AND org_id = ?", req.params.id, req.user!.orgId);
+  res.json({ ok: true });
+});
+
+// ---------------- géographie ----------------
+app.get(
+  "/api/geocode",
+  requireAuth,
+  wrap(async (req, res) => {
+    const q = str(req.query.q, 200);
+    if (q.length < 3) return res.json([]);
+    const nlon = Number(req.query.lon);
+    const nlat = Number(req.query.lat);
+    const near = Number.isFinite(nlon) && Number.isFinite(nlat) && req.query.lon !== undefined ? { lon: nlon, lat: nlat } : undefined;
+    let r = await ignGeocode(q, 6, req.query.autocomplete !== "0", near).catch(() => []);
+    if (!r.length && googleKey()) r = await googleGeocode(q).catch(() => []);
+    res.json(r);
+  }),
+);
+
+app.get(
+  "/api/reverse",
+  requireAuth,
+  wrap(async (req, res) => {
+    const lon = Number(req.query.lon);
+    const lat = Number(req.query.lat);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw bad("Coordonnées invalides");
+    res.json({ label: await ignReverse(lon, lat) });
+  }),
+);
+
+app.get(
+  "/api/buildings",
+  requireAuth,
+  wrap(async (req, res) => {
+    const lon = Number(req.query.lon);
+    const lat = Number(req.query.lat);
+    const r = Math.min(150, Math.max(20, Number(req.query.r) || 80));
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw bad("Coordonnées invalides");
+    const dLat = r / 111000;
+    const dLon = dLat / Math.cos((lat * Math.PI) / 180);
+    const bs = await ignBuildings(lon - dLon, lat - dLat, lon + dLon, lat + dLat).catch(() => []);
+    res.json({
+      type: "FeatureCollection",
+      features: bs.map((b) => ({
+        type: "Feature",
+        properties: { id: b.id, usage: b.usage, height: b.height },
+        geometry: { type: "Polygon", coordinates: [[...b.ring, b.ring[0]]] },
+      })),
+    });
+  }),
+);
+
+// ---------------- études ----------------
+const parseSource = (v: unknown): SourcePref => (v === "ign" || v === "google" ? v : "auto");
+const parsePoints = (v: unknown, fallback: [number, number]): [number, number][] => {
+  if (!Array.isArray(v) || !v.length) return [fallback];
+  const pts = v.filter(validLonLat).slice(0, 10).map((p) => [p[0], p[1]] as [number, number]);
+  return pts.length ? pts : [fallback];
+};
+
+function saveModel(id: string, model: RoofModel, edited: boolean) {
+  const m = computeMetrics(model);
+  run(
+    "UPDATE studies SET model = ?, total_area = ?, face_count = ?, edited = ?, updated_at = ? WHERE id = ?",
+    JSON.stringify(model),
+    m.totals.area,
+    m.totals.faceCount,
+    edited ? 1 : 0,
+    now(),
+    id,
+  );
+}
+
+function checkQuota(orgId: string) {
+  const q = quotaStatus(orgId);
+  if (!q.allowed)
+    throw new HttpError(
+      402,
+      q.plan === "trial"
+        ? `Période d'essai terminée (${q.limit} études). Abonnez-vous pour continuer.`
+        : `Quota mensuel atteint (${q.limit} études).`,
+    );
+}
+
+app.get("/api/studies", requireAuth, (req, res) => {
+  const q = str(req.query.q, 100);
+  const rows = all<any>(
+    `SELECT s.id, s.title, s.address, s.client_name, s.notes, s.lon, s.lat, s.total_area, s.face_count, s.edited, s.created_at, s.updated_at,
+       (SELECT COUNT(*) FROM reports r WHERE r.study_id = s.id) AS report_count
+     FROM studies s WHERE s.org_id = ? ${q ? "AND (s.address LIKE ? OR s.title LIKE ? OR s.client_name LIKE ?)" : ""}
+     ORDER BY s.updated_at DESC LIMIT 500`,
+    req.user!.orgId,
+    ...(q ? [`%${q}%`, `%${q}%`, `%${q}%`] : []),
+  );
+  res.json(rows.map((r) => studyRow(r)));
+});
+
+app.post(
+  "/api/studies",
+  requireAuth,
+  wrap(async (req, res) => {
+    const lon = num(req.body.lon);
+    const lat = num(req.body.lat);
+    if (!validLonLat([lon, lat])) throw bad("Position invalide");
+    checkQuota(req.user!.orgId);
+    const address = str(req.body.address, 300) || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+    let model: RoofModel;
+    if (req.body.manual) {
+      model = { version: 1, origin: [lon, lat], faces: [], edgeOverrides: {}, footprint: null, meta: { warnings: [] } };
+    } else {
+      model = await analyzeRoof({ points: parsePoints(req.body.points, [lon, lat]), source: parseSource(req.body.source) });
+      logUsage(req.user!.orgId, "analysis");
+    }
+    const id = uid();
+    const t = now();
+    run(
+      `INSERT INTO studies(id, org_id, created_by, title, address, client_name, notes, lon, lat, model, created_at, updated_at)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      req.user!.orgId,
+      req.user!.id,
+      str(req.body.title, 200),
+      address,
+      str(req.body.clientName, 200),
+      "",
+      lon,
+      lat,
+      JSON.stringify(model),
+      t,
+      t,
+    );
+    saveModel(id, model, false);
+    res.json(studyRow(one("SELECT * FROM studies WHERE id = ?", id), true));
+  }),
+);
+
+app.get("/api/studies/:id", requireAuth, (req, res) => {
+  res.json(studyRow(getStudy(req), true));
+});
+
+app.put("/api/studies/:id", requireAuth, (req, res) => {
+  const s = getStudy(req);
+  const b = req.body ?? {};
+  run(
+    "UPDATE studies SET title = ?, address = ?, client_name = ?, notes = ?, updated_at = ? WHERE id = ?",
+    b.title !== undefined ? str(b.title, 200) : s.title,
+    b.address !== undefined ? str(b.address, 300) || s.address : s.address,
+    b.clientName !== undefined ? str(b.clientName, 200) : s.client_name,
+    b.notes !== undefined ? str(b.notes, 4000) : s.notes,
+    now(),
+    s.id,
+  );
+  if (b.model) saveModel(s.id, sanitizeModel(b.model), true);
+  res.json(studyRow(one("SELECT * FROM studies WHERE id = ?", s.id), true));
+});
+
+app.delete("/api/studies/:id", requireAuth, (req, res) => {
+  const s = getStudy(req);
+  run("DELETE FROM studies WHERE id = ?", s.id);
+  res.json({ ok: true });
+});
+
+app.post(
+  "/api/studies/:id/analyze",
+  requireAuth,
+  wrap(async (req, res) => {
+    const s = getStudy(req);
+    checkQuota(req.user!.orgId);
+    const overhang = Number(req.body.overhang);
+    const prev = JSON.parse(s.model)?.meta ?? {};
+    const model = await analyzeRoof({
+      points: parsePoints(req.body.points ?? prev.points, [s.lon, s.lat]),
+      source: parseSource(req.body.source ?? prev.source),
+      overhang: Number.isFinite(overhang) ? Math.max(0, Math.min(2, overhang)) : undefined,
+    });
+    logUsage(req.user!.orgId, "analysis");
+    saveModel(s.id, model, false);
+    res.json(studyRow(one("SELECT * FROM studies WHERE id = ?", s.id), true));
+  }),
+);
+
+app.post(
+  "/api/fit-face",
+  requireAuth,
+  wrap(async (req, res) => {
+    const ring = req.body.ring;
+    if (!Array.isArray(ring) || ring.length < 3 || ring.length > 500 || !ring.every(validLonLat)) throw bad("Contour invalide");
+    const r = await fitFace(ring, parseSource(req.body.source));
+    if (!r) throw new HttpError(422, "Pas de relevé 3D exploitable sur cette zone");
+    res.json(r);
+  }),
+);
+
+// ---------------- rapports ----------------
+async function nextReportNumber(orgId: string): Promise<string> {
+  run("UPDATE organizations SET report_seq = report_seq + 1 WHERE id = ?", orgId);
+  const seq = one<any>("SELECT report_seq FROM organizations WHERE id = ?", orgId).report_seq;
+  return `MT-${new Date().getFullYear()}-${String(seq).padStart(4, "0")}`;
+}
+
+app.post(
+  "/api/studies/:id/reports",
+  requireAuth,
+  wrap(async (req, res) => {
+    const s = getStudy(req);
+    const model: RoofModel = JSON.parse(s.model);
+    if (!model.faces.length) throw bad("Aucun pan : impossible d'établir un rapport");
+    const org = one<any>("SELECT * FROM organizations WHERE id = ?", req.user!.orgId);
+    const number = await nextReportNumber(org.id);
+    const pdf = await generateReport({
+      org: { ...org, logo: org.logo ? Buffer.from(org.logo) : null },
+      number,
+      date: new Date(),
+      address: s.address,
+      title: s.title,
+      clientName: s.client_name,
+      notes: s.notes,
+      model,
+      author: req.user!.name,
+    });
+    const m = computeMetrics(model);
+    const summary = {
+      area: m.totals.area,
+      faceCount: m.totals.faceCount,
+      meanPitchDeg: m.totals.meanPitchDeg,
+      lengths: m.totals.lengths,
+    };
+    const id = uid();
+    run(
+      "INSERT INTO reports(id, study_id, org_id, created_by, number, address, summary, pdf, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id,
+      s.id,
+      org.id,
+      req.user!.id,
+      number,
+      s.address,
+      JSON.stringify(summary),
+      pdf,
+      now(),
+    );
+    logUsage(org.id, "report");
+    res.json({ id, number, createdAt: now(), summary });
+  }),
+);
+
+const reportRow = (r: any) => ({
+  id: r.id,
+  studyId: r.study_id,
+  number: r.number,
+  address: r.address,
+  summary: JSON.parse(r.summary),
+  createdAt: r.created_at,
+  author: r.author ?? null,
+});
+
+app.get("/api/studies/:id/reports", requireAuth, (req, res) => {
+  const s = getStudy(req);
+  res.json(
+    all<any>(
+      "SELECT r.id, r.study_id, r.number, r.address, r.summary, r.created_at, u.name AS author FROM reports r LEFT JOIN users u ON u.id = r.created_by WHERE r.study_id = ? ORDER BY r.created_at DESC",
+      s.id,
+    ).map(reportRow),
+  );
+});
+
+app.get("/api/reports", requireAuth, (req, res) => {
+  res.json(
+    all<any>(
+      "SELECT r.id, r.study_id, r.number, r.address, r.summary, r.created_at, u.name AS author FROM reports r LEFT JOIN users u ON u.id = r.created_by WHERE r.org_id = ? ORDER BY r.created_at DESC LIMIT 1000",
+      req.user!.orgId,
+    ).map(reportRow),
+  );
+});
+
+app.get("/api/reports/:id/pdf", requireAuth, (req, res) => {
+  const r = one<any>("SELECT number, pdf FROM reports WHERE id = ? AND org_id = ?", req.params.id, req.user!.orgId);
+  if (!r) return res.status(404).json({ error: "Rapport introuvable" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `${req.query.download ? "attachment" : "inline"}; filename="rapport-metrage-${r.number}.pdf"`,
+  );
+  res.send(Buffer.from(r.pdf));
+});
+
+app.delete("/api/reports/:id", requireAuth, (req, res) => {
+  run("DELETE FROM reports WHERE id = ? AND org_id = ?", req.params.id, req.user!.orgId);
+  res.json({ ok: true });
+});
+
+// ---------------- abonnement ----------------
+app.get("/api/billing", requireAuth, (req, res) => {
+  res.json({ enabled: billingEnabled(), quota: quotaStatus(req.user!.orgId), price: process.env.PRICE_LABEL ?? null });
+});
+app.post(
+  "/api/billing/checkout",
+  requireOwner,
+  wrap(async (req, res) => {
+    if (!billingEnabled()) throw bad("Abonnements non configurés");
+    res.json({ url: await createCheckout(req.user!.orgId, req.user!.email, baseUrl(req)) });
+  }),
+);
+app.post(
+  "/api/billing/portal",
+  requireOwner,
+  wrap(async (req, res) => {
+    if (!billingEnabled()) throw bad("Abonnements non configurés");
+    res.json({ url: await createPortal(req.user!.orgId, baseUrl(req)) });
+  }),
+);
+
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+app.use("/api", (_req, res) => res.status(404).json({ error: "Route inconnue" }));
+
+// ---------------- application web (build) ----------------
+const webDir = join(process.cwd(), "dist", "web");
+if (existsSync(webDir)) {
+  app.use(express.static(webDir, { index: false, maxAge: "1h" }));
+  app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(join(webDir, "index.html")));
+}
+
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err instanceof HttpError ? err.status : err?.type === "entity.too.large" ? 413 : 500;
+  if (status === 500) console.error(err);
+  res.status(status).json({ error: status === 500 ? "Erreur interne" : err.message });
+});
+
+if (process.env.NODE_ENV !== "test") {
+  const port = Number(process.env.PORT ?? 3000);
+  app.listen(port, () => console.log(`MétréToit : http://localhost:${port}`));
+}

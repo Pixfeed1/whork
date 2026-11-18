@@ -181,6 +181,8 @@ export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
     footprint,
     meta: {
       analyzedAt: new Date().toISOString(),
+      points: input.points,
+      source: input.source ?? "auto",
       dsmSource: dsm?.grid.source ?? null,
       imageryDate: dsm?.imageryDate ?? insights?.imageryDate ?? null,
       imageryQuality: dsm?.imageryQuality ?? insights?.imageryQuality ?? null,
