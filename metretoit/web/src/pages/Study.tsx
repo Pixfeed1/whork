@@ -13,7 +13,7 @@ import {
   pitchPercent,
   vertexKey,
 } from "../../../shared/roof";
-import { addFace, deleteFace, deleteVertex, setEdgeType, splitFace, updateFace, addElement, updateElement, deleteElement } from "../../../shared/edit";
+import { addFace, deleteFace, deleteVertex, setEdgeType, splitFace, updateFace, addElement, updateElement, deleteElement, autoOrient } from "../../../shared/edit";
 import { api, fmtDateTime, type Report, type Study } from "../api";
 import { RoofEditor, type Selection, type Tool, type Basemap } from "../components/RoofEditor";
 import { View3D } from "../components/View3D";
@@ -178,6 +178,20 @@ export function StudyPage() {
   const selFace = sel?.kind === "face" ? model.faces.find((f) => f.id === sel.id) : null;
   const selFaceM = selFace ? metrics.faces.find((f) => f.id === selFace.id) : null;
   const selEdge = sel?.kind === "edge" ? metrics.edges.find((e) => e.key === sel.key) : null;
+  // pans voisins de même pente qui descendent dans le même sens, séparés par une arête horizontale
+  const suspects: [number, number][] = [];
+  const suspectIds: string[] = [];
+  for (const e of metrics.edges) {
+    if (e.faces.length !== 2 || e.autoType !== "bris" || e.slopeDeg > 8) continue;
+    const [fa, fb] = e.faces.map((id) => model.faces.find((f) => f.id === id)!);
+    const [ma, mb] = e.faces.map((id) => metrics.faces.find((f) => f.id === id)!);
+    if (!fa || !fb || !ma || !mb) continue;
+    const dAz = Math.abs((((fa.azimuthDeg - fb.azimuthDeg) % 360) + 540) % 360 - 180);
+    if (dAz < 30 && Math.abs(fa.pitchDeg - fb.pitchDeg) < 5) {
+      suspects.push([ma.index, mb.index]);
+      suspectIds.push(fa.id, fb.id);
+    }
+  }
   const selElt = sel?.kind === "element" ? model.elements?.find((e) => e.id === sel.id) : null;
   const selEltM = selElt ? metrics.elements.find((e) => e.id === selElt.id) : null;
   const meta = (model.meta ?? {}) as any;
@@ -200,7 +214,8 @@ export function StudyPage() {
         const r = await api<{ pitchDeg: number; azimuthDeg: number; plane: any }>("/fit-face", { body: { ring: f.ring } });
         cur = updateFace(cur, fid, { pitchDeg: r.pitchDeg, azimuthDeg: r.azimuthDeg, plane: r.plane });
       } catch {
-        /* pas de relevé : on garde les valeurs saisies */
+        // pas de relevé exploitable : le pan descend depuis l'arête qu'il partage (faîtage)
+        cur = autoOrient(cur, fid);
       }
     }
     return cur;
@@ -369,6 +384,24 @@ export function StudyPage() {
           </div>
         </div>
         {err && <div className="alert alert-error">{err}</div>}
+        {suspects.length > 0 && (
+          <div className="alert alert-warn">
+            <b>Orientation à vérifier :</b> les pans {suspects.map((p) => `${p[0]} et ${p[1]}`).join(", ")} descendent dans le même sens
+            alors qu'ils se touchent (toiture en « dents de scie »). S'il s'agit d'un toit à deux pans, corrigez-les.
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  let m = model;
+                  for (const id of new Set(suspectIds)) m = autoOrient(m, id);
+                  commit(m);
+                }}
+              >
+                Corriger l'orientation
+              </button>
+            </div>
+          </div>
+        )}
         {(meta.warnings ?? []).map((w: string) => (
           <div className="alert alert-warn" key={w}>
             {w}

@@ -48,6 +48,7 @@ export interface Org {
   siret: string;
   reportFooter: string;
   wastePct: number;
+  report3d: boolean;
   hasLogo: boolean;
   plan: string;
   planStatus: string;

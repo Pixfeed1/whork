@@ -11,6 +11,7 @@ import {
   vertexKey,
   edgeKey,
   newId,
+  computeMetrics,
 } from "./roof";
 
 const clone = (m: RoofModel): RoofModel => JSON.parse(JSON.stringify(m));
@@ -177,4 +178,34 @@ export function deleteElement(model: RoofModel, id: string): RoofModel {
   const m = clone(model);
   m.elements = (m.elements ?? []).filter((e) => e.id !== id);
   return m;
+}
+
+/**
+ * Oriente un pan dont la pente n'a pas pu être mesurée : il descend depuis la plus longue
+ * arête qu'il partage avec un autre pan (en général le faîtage), vers l'intérieur du pan.
+ * Sans arête partagée, l'orientation est laissée telle quelle.
+ */
+export function autoOrient(model: RoofModel, faceId: string): RoofModel {
+  const met = computeMetrics(model);
+  const face = model.faces.find((f) => f.id === faceId);
+  if (!face) return model;
+  const frame = makeFrame(model.origin[0], model.origin[1]);
+  const shared = met.edges.filter((e) => e.faces.length === 2 && e.faces.includes(faceId)).sort((a, b) => b.length2D - a.length2D)[0];
+  if (!shared) return model;
+  const a = toLocal(frame, shared.a);
+  const b = toLocal(frame, shared.b);
+  const ring = face.ring.map((p) => toLocal(frame, p));
+  const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+  const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  let nx = -(b[1] - a[1]) / L;
+  let ny = (b[0] - a[0]) / L;
+  // vers l'intérieur du pan (du faîtage vers l'égout)
+  if ((cx - (a[0] + b[0]) / 2) * nx + (cy - (a[1] + b[1]) / 2) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  let az = (Math.atan2(nx, ny) * 180) / Math.PI;
+  if (az < 0) az += 360;
+  return updateFace(model, faceId, { azimuthDeg: Math.round(az), plane: null });
 }

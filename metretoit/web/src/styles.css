@@ -2153,3 +2153,29 @@ mark.todo {
   gap: 8px;
   padding: 4px 4px 0;
 }
+label.check-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid #eaecf0;
+  background: #fff;
+  color: #667085;
+  cursor: pointer;
+}
+.icon-btn.danger:hover {
+  color: var(--danger);
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.sc-foot .sc-del {
+  margin-left: auto;
+  margin-right: 8px;
+}

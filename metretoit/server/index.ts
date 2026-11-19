@@ -159,6 +159,7 @@ function orgPublic(o: any) {
     siret: o.siret,
     reportFooter: o.report_footer,
     wastePct: o.waste_pct,
+    report3d: !!o.report_3d,
     hasLogo: !!o.logo_mime,
     plan: o.plan,
     planStatus: o.plan_status,
@@ -301,7 +302,7 @@ app.put("/api/org", requireOwner, (req, res) => {
   const b = req.body ?? {};
   const waste = Number(b.wastePct);
   run(
-    `UPDATE organizations SET name = ?, address = ?, postcode = ?, city = ?, phone = ?, email = ?, website = ?, siret = ?, report_footer = ?, waste_pct = ? WHERE id = ?`,
+    `UPDATE organizations SET name = ?, address = ?, postcode = ?, city = ?, phone = ?, email = ?, website = ?, siret = ?, report_footer = ?, waste_pct = ?, report_3d = ? WHERE id = ?`,
     str(b.name, 120) || "Mon entreprise",
     str(b.address, 200),
     str(b.postcode, 20),
@@ -312,6 +313,7 @@ app.put("/api/org", requireOwner, (req, res) => {
     str(b.siret, 30),
     str(b.reportFooter, 600),
     Number.isFinite(waste) ? Math.max(0, Math.min(50, waste)) : 10,
+    b.report3d ? 1 : 0,
     req.user!.orgId,
   );
   res.json(orgPublic(one("SELECT * FROM organizations WHERE id = ?", req.user!.orgId)));

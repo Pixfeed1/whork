@@ -93,6 +93,13 @@ CREATE TABLE IF NOT EXISTS password_resets (
 );
 `);
 
+// migrations : colonnes ajoutées après la première version
+function addColumn(table: string, col: string, def: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+}
+addColumn("organizations", "report_3d", "INTEGER DEFAULT 0");
+
 export const now = () => new Date().toISOString();
 export const uid = () => randomUUID();
 

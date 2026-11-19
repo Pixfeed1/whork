@@ -103,6 +103,10 @@ export function SettingsPage() {
           Majoration pour chutes (%)
           <input type="number" min={0} max={50} step={1} value={org.wastePct} onChange={set("wastePct")} disabled={!owner} />
         </label>
+        <label className="span2 check-row">
+          <input type="checkbox" checked={!!org.report3d} onChange={(e) => setOrg({ ...org, report3d: e.target.checked })} disabled={!owner} />
+          Inclure une page de vues 3D de la toiture dans les rapports PDF
+        </label>
         <label className="span2">
           Mention en pied de page des rapports
           <textarea

@@ -118,5 +118,16 @@ describe("opérations d'édition", () => {
     expect(top[1]).toBeGreaterThan(bottom[1]);
     expect(deleteElement(g, a.id).elements!.length).toBe(1);
   });
+
+  it("orientation automatique : deux pans « en dents de scie » redeviennent un toit à deux pans", async () => {
+    const { autoOrient } = await import("../shared/edit");
+    let g = gable();
+    g.faces[1].azimuthDeg = 180; // les deux pans descendent vers le sud (erreur)
+    expect(computeMetrics(g).totals.lengths.faitage).toBe(0);
+    g = autoOrient(autoOrient(g, "S"), "N");
+    expect(g.faces[0].azimuthDeg).toBe(180);
+    expect(g.faces[1].azimuthDeg).toBe(0);
+    expect(computeMetrics(g).totals.lengths.faitage).toBeCloseTo(10, 2);
+  });
 });
 

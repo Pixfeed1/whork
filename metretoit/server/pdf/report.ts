@@ -40,6 +40,7 @@ export interface ReportOrg {
   siret?: string;
   report_footer?: string;
   waste_pct?: number;
+  report_3d?: number | boolean;
   logo?: Buffer | null;
   logo_mime?: string | null;
 }
@@ -200,11 +201,11 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     { width: A4.w - 2 * M },
   );
 
-  // ---------- page : vues 3D ----------
+  // ---------- page : vues 3D (facultative, réglage Entreprise) ----------
+  if (input.org.report_3d) {
   doc.addPage();
   header(doc, input);
   doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Vues 3D de la toiture", M, 140);
-  {
     const gw = (A4.w - 2 * M - 14) / 2;
     const gh = 245;
     VIEW_BEARINGS.forEach((vb, i) => {

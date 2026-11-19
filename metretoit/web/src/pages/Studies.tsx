@@ -6,7 +6,7 @@ import { api, type Study } from "../api";
 import { useAuth } from "../App";
 import { baseStyle } from "../components/mapStyle";
 import { PageHead } from "./Help";
-import { IList, IGrid, IMap, IUser, IChevronRight, IHome, ISearch } from "../components/Icons";
+import { IList, IGrid, IMap, IUser, IChevronRight, IHome, ISearch, ITrash } from "../components/Icons";
 
 type View = "liste" | "vignettes" | "carte";
 const nf = (n: number, d = 1) => n.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -59,6 +59,15 @@ export function StudiesPage() {
     return () => clearTimeout(t);
   }, [q]);
   const quota = me?.quota;
+  const remove = async (st: Study) => {
+    if (!confirm(`Supprimer définitivement l'étude « ${st.title || st.address} » et ses rapports ?`)) return;
+    try {
+      await api(`/studies/${st.id}`, { method: "DELETE" });
+      setRows((r) => (r ? r.filter((x) => x.id !== st.id) : r));
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  };
   const views: [View, string, React.ReactNode][] = [
     ["liste", "Liste", <IList size={16} />],
     ["vignettes", "Vignettes", <IGrid size={16} />],
@@ -108,7 +117,7 @@ export function StudiesPage() {
       ) : view === "vignettes" ? (
         <div className="card-grid">
           {rows.map((s) => (
-            <StudyCard key={s.id} s={s} />
+            <StudyCard key={s.id} s={s} onDelete={() => remove(s)} />
           ))}
         </div>
       ) : view === "liste" ? (
@@ -122,6 +131,7 @@ export function StudiesPage() {
                 <th className="num hide-sm">Pans</th>
                 <th className="hide-sm">Statut</th>
                 <th className="hide-sm">Modifiée le</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -140,6 +150,19 @@ export function StudiesPage() {
                       <StatusBadge s={s} />
                     </td>
                     <td className="hide-sm">{fmtLong(s.updatedAt)}</td>
+                    <td className="actions">
+                      <button
+                        className="icon-btn danger"
+                        title="Supprimer l'étude"
+                        aria-label="Supprimer l'étude"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          remove(s);
+                        }}
+                      >
+                        <ITrash size={16} />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -158,7 +181,7 @@ function StatusBadge({ s, floating }: { s: Study; floating?: boolean }) {
   return <span className={`badge ${ready ? "badge-ok" : "badge-todo"} ${floating ? "badge-float" : ""}`}>{ready ? "Prêt" : "À dessiner"}</span>;
 }
 
-function StudyCard({ s }: { s: Study }) {
+function StudyCard({ s, onDelete }: { s: Study; onDelete: () => void }) {
   const a = splitAddress(s.address);
   const [imgOk, setImgOk] = useState(true);
   return (
@@ -197,6 +220,18 @@ function StudyCard({ s }: { s: Study }) {
         </div>
         <div className="sc-foot">
           <span className="sc-date">{fmtLong(s.updatedAt)}</span>
+          <button
+            className="icon-btn danger sc-del"
+            title="Supprimer l'étude"
+            aria-label="Supprimer l'étude"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <ITrash size={15} />
+          </button>
           <span className="sc-view">
             Voir <IChevronRight size={14} />
           </span>

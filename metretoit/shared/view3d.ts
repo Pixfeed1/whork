@@ -20,23 +20,38 @@ function hexToRgb(h: string): [number, number, number] {
 }
 const rgb = (c: [number, number, number], k: number) => `rgb(${c.map((v) => Math.round(Math.max(0, Math.min(255, v * k)))).join(",")})`;
 
-/** altitude d'un point d'un pan (plan mesuré, sinon plan reconstitué depuis la pente) */
+/**
+ * Altitude d'un point d'un pan, pour l'affichage 3D.
+ * Chaque pan est reconstruit à partir de sa pente, en partant de son égout. Les égouts
+ * proches (moins de 0,8 m d'écart) sont alignés sur une même hauteur : ainsi les pans d'un
+ * même toit se rejoignent toujours proprement au faîtage, même si le relevé 3D est bruité
+ * ou si une pente a été corrigée à la main. Les vrais décrochés (annexe plus basse) sont conservés.
+ */
 function zFn(model: RoofModel, frame: ReturnType<typeof makeFrame>) {
-  const withPlane = model.faces.filter((f) => f.plane);
-  // altitude d'égout de référence pour les pans dessinés à la main
-  const eaves = withPlane.map((f) => Math.min(...f.ring.map((p) => planeZ(f, frame, toLocal(frame, p))!)));
-  const refEave = eaves.length ? eaves.sort((a, b) => a - b)[Math.floor(eaves.length / 2)] : 0;
+  const lowestProj = new Map<string, number>();
+  const rawEave = new Map<string, number | null>();
+  for (const f of model.faces) {
+    const d = downVector(f.azimuthDeg);
+    const ring = f.ring.map((q) => toLocal(frame, q));
+    const proj = ring.map((l) => l[0] * d[0] + l[1] * d[1]);
+    const lo = Math.max(...proj);
+    lowestProj.set(f.id, lo);
+    // altitude d'égout mesurée (plan du relevé), si disponible
+    const lowPt = ring[proj.indexOf(lo)];
+    rawEave.set(f.id, f.plane ? planeZ(f, frame, lowPt) : null);
+  }
+  const known = [...rawEave.values()].filter((v): v is number => v != null && Number.isFinite(v)).sort((a, b) => a - b);
+  const ref = known.length ? known[Math.floor(known.length / 2)] : 0;
+  // regroupement des égouts : à moins de 0,8 m de la référence, on aligne
+  const eave = new Map<string, number>();
+  for (const f of model.faces) {
+    const r = rawEave.get(f.id);
+    eave.set(f.id, r == null || !Number.isFinite(r) || Math.abs(r - ref) < 0.8 ? ref : r);
+  }
   return (f: RoofFace, p: XY): number => {
-    const z = planeZ(f, frame, p);
-    if (z != null) return z;
     const d = downVector(f.azimuthDeg);
     const s = Math.tan(f.pitchDeg * D2R);
-    const proj = f.ring.map((q) => {
-      const l = toLocal(frame, q);
-      return l[0] * d[0] + l[1] * d[1];
-    });
-    const lowest = Math.max(...proj);
-    return refEave + s * (lowest - (p[0] * d[0] + p[1] * d[1]));
+    return (eave.get(f.id) ?? ref) + s * ((lowestProj.get(f.id) ?? 0) - (p[0] * d[0] + p[1] * d[1]));
   };
 }
 
@@ -82,7 +97,10 @@ export function roofView(model: RoofModel, bearing: number, elevation = 32): Pol
   const met = computeMetrics(model);
   const meta: any = model.meta ?? {};
   const allZ = model.faces.flatMap((f) => f.ring.map((q) => Z(f, toLocal(frame, q))));
-  const ground = Number.isFinite(meta?.diagnostics?.ground) ? meta.diagnostics.ground : Math.min(...allZ) - 2.8;
+  // sol : mesuré si possible (hauteur de mur plausible entre 2 et 9 m), sinon 2,8 m sous l'égout le plus bas
+  const minZ = Math.min(...allZ);
+  const g = Number(meta?.diagnostics?.ground);
+  const ground = Number.isFinite(g) && minZ - g >= 2 && minZ - g <= 9 ? g : minZ - 2.8;
   const wallColor: [number, number, number] = [226, 220, 208];
   for (const e of met.edges) {
     if (e.faces.length !== 1) continue;
