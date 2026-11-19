@@ -15,7 +15,7 @@ import {
 } from "../../../shared/roof";
 import { addFace, deleteFace, deleteVertex, setEdgeType, splitFace, updateFace, addElement, updateElement, deleteElement } from "../../../shared/edit";
 import { api, fmtDateTime, type Report, type Study } from "../api";
-import { RoofEditor, type Selection, type Tool } from "../components/RoofEditor";
+import { RoofEditor, type Selection, type Tool, type Basemap } from "../components/RoofEditor";
 import { View3D } from "../components/View3D";
 import { FACE_COLORS } from "../components/mapStyle";
 import { ReportTable } from "./Reports";
@@ -36,7 +36,39 @@ export function StudyPage() {
   const [tool, setTool] = useState<Tool>("select");
   const [eltType, setEltType] = useState<ElementType>("cheminee");
   const [labels, setLabels] = useState(true);
-  const [basemap, setBasemap] = useState<"ortho" | "plan">("ortho");
+  const [basemap, setBasemapState] = useState<Basemap>(() => {
+    try {
+      const v = localStorage.getItem("mt_fond");
+      if (v === "ortho" || v === "plan" || v === "google") return v;
+    } catch {
+      /* ignoré */
+    }
+    return "ortho";
+  });
+  const [googleTiles, setGoogleTiles] = useState(false);
+  const setBasemap = (b: Basemap) => {
+    setBasemapState(b);
+    try {
+      localStorage.setItem("mt_fond", b);
+    } catch {
+      /* ignoré */
+    }
+  };
+  useEffect(() => {
+    api<{ available: boolean }>("/tiles/google/status")
+      .then((r) => {
+        setGoogleTiles(r.available);
+        let pref: string | null = null;
+        try {
+          pref = localStorage.getItem("mt_fond");
+        } catch {
+          /* ignoré */
+        }
+        if (r.available && !pref) setBasemapState("google"); // plus net par défaut
+        if (!r.available && pref === "google") setBasemapState("ortho");
+      })
+      .catch(() => setGoogleTiles(false));
+  }, []);
   const [hl, setHl] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
   const [reports, setReports] = useState<Report[]>([]);
@@ -287,7 +319,8 @@ export function StudyPage() {
             <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Cotes
           </label>
           <select className="tool" value={basemap} onChange={(e) => setBasemap(e.target.value as any)} aria-label="Fond de carte">
-            <option value="ortho">Photo aérienne</option>
+            <option value="ortho">Photo IGN</option>
+            {googleTiles && <option value="google">Photo Google (HD)</option>}
             <option value="plan">Plan</option>
           </select>
           <span className={`save-state ${saveState}`}>{saveLabel}</span>

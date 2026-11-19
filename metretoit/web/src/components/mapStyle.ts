@@ -6,6 +6,14 @@ export function baseStyle(): StyleSpecification {
   return {
     version: 8,
     sources: {
+      // photos Google relayées par notre serveur (clé jamais exposée)
+      gsat: {
+        type: "raster",
+        tiles: [`${typeof location !== "undefined" ? location.origin : ""}/api/tiles/google/{z}/{x}/{y}`],
+        tileSize: 256,
+        maxzoom: 21,
+        attribution: "Imagerie © Google",
+      },
       ortho: {
         type: "raster",
         tiles: [`${IGN}&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg`],
@@ -24,6 +32,7 @@ export function baseStyle(): StyleSpecification {
     layers: [
       { id: "plan", type: "raster", source: "plan", layout: { visibility: "none" } },
       { id: "ortho", type: "raster", source: "ortho" },
+      { id: "gsat", type: "raster", source: "gsat", layout: { visibility: "none" } },
     ],
   };
 }

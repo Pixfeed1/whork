@@ -19,6 +19,7 @@ import { mailEnabled, sendMail, resetMail } from "./mail";
 import { gateMiddleware, gateGet, gatePost } from "./gate";
 import { randomBytes, createHash } from "node:crypto";
 import { googleKey, googleGeocode } from "./providers/google";
+import { googleTilesAvailable, fetchGoogleTile } from "./providers/googleTiles";
 import { analyzeRoof, fitFace, type SourcePref } from "./analysis/pipeline";
 import { generateReport } from "./pdf/report";
 import { computeMetrics, type RoofModel, type EdgeType, EDGE_TYPES } from "../shared/roof";
@@ -761,6 +762,30 @@ app.get("/api/public/config", (_req, res) => {
     },
   });
 });
+// ---------------- photos aériennes Google (relais) ----------------
+app.get(
+  "/api/tiles/google/status",
+  requireAuth,
+  wrap(async (_req, res) => {
+    res.json({ available: await googleTilesAvailable() });
+  }),
+);
+app.get(
+  "/api/tiles/google/:z/:x/:y",
+  requireAuth,
+  wrap(async (req, res) => {
+    const z = Number(req.params.z);
+    const x = Number(req.params.x);
+    const y = Number(req.params.y);
+    if (![z, x, y].every(Number.isInteger) || z < 0 || z > 22 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) throw bad("Tuile invalide");
+    const t = await fetchGoogleTile(z, x, y).catch(() => null);
+    if (!t) return res.status(404).end();
+    res.setHeader("Content-Type", t.type);
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.send(t.body);
+  }),
+);
+
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api", (_req, res) => res.status(404).json({ error: "Route inconnue" }));

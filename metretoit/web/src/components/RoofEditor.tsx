@@ -6,6 +6,7 @@ import { type RoofModel, type RoofMetrics, EDGE_COLOR, ELEMENT_TYPES, vertexKey,
 import { moveVertex, insertVertex, uniqueVertices, updateElement } from "../../../shared/edit";
 import { baseStyle, FACE_COLORS } from "./mapStyle";
 
+export type Basemap = "ortho" | "plan" | "google";
 export type Tool = "select" | "draw" | "insert" | "split" | "element";
 export type Selection =
   | { kind: "face"; id: string }
@@ -26,7 +27,7 @@ interface Props {
   onAddElement: (ll: LonLat) => void;
   showLabels: boolean;
   highlightType: string | null;
-  basemap: "ortho" | "plan";
+  basemap: Basemap;
   fitKey: string;
 }
 
@@ -144,6 +145,7 @@ export function RoofEditor(p: Props) {
     if (!m || !ready) return;
     m.setLayoutProperty("ortho", "visibility", p.basemap === "ortho" ? "visible" : "none");
     m.setLayoutProperty("plan", "visibility", p.basemap === "plan" ? "visible" : "none");
+    m.setLayoutProperty("gsat", "visibility", p.basemap === "google" ? "visible" : "none");
   }, [ready, p.basemap]);
 
   // ---------- rendu ----------
