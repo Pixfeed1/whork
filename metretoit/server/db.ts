@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS usage_events (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS usage_org ON usage_events(org_id, kind, created_at);
+CREATE TABLE IF NOT EXISTS streetviews (
+  study_id TEXT NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+  fkey TEXT NOT NULL,
+  sig TEXT NOT NULL,
+  img BLOB,
+  info TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (study_id, fkey)
+);
 CREATE TABLE IF NOT EXISTS thumbs (
   study_id TEXT PRIMARY KEY REFERENCES studies(id) ON DELETE CASCADE,
   img BLOB NOT NULL,

@@ -27,7 +27,7 @@ const rgb = (c: [number, number, number], k: number) => `rgb(${c.map((v) => Math
  * même toit se rejoignent toujours proprement au faîtage, même si le relevé 3D est bruité
  * ou si une pente a été corrigée à la main. Les vrais décrochés (annexe plus basse) sont conservés.
  */
-function zFn(model: RoofModel, frame: ReturnType<typeof makeFrame>) {
+export function roofHeightFn(model: RoofModel, frame: ReturnType<typeof makeFrame>) {
   const lowestProj = new Map<string, number>();
   const rawEave = new Map<string, number | null>();
   for (const f of model.faces) {
@@ -48,11 +48,12 @@ function zFn(model: RoofModel, frame: ReturnType<typeof makeFrame>) {
     const r = rawEave.get(f.id);
     eave.set(f.id, r == null || !Number.isFinite(r) || Math.abs(r - ref) < 0.8 ? ref : r);
   }
-  return (f: RoofFace, p: XY): number => {
+  const z = (f: RoofFace, p: XY): number => {
     const d = downVector(f.azimuthDeg);
     const s = Math.tan(f.pitchDeg * D2R);
     return (eave.get(f.id) ?? ref) + s * ((lowestProj.get(f.id) ?? 0) - (p[0] * d[0] + p[1] * d[1]));
   };
+  return { z, ref, measured: known.length > 0 };
 }
 
 /**
@@ -61,7 +62,7 @@ function zFn(model: RoofModel, frame: ReturnType<typeof makeFrame>) {
  */
 export function roofView(model: RoofModel, bearing: number, elevation = 32): Poly3D[] {
   const frame = makeFrame(model.origin[0], model.origin[1]);
-  const Z = zFn(model, frame);
+  const Z = roofHeightFn(model, frame).z;
   const v: XY = [Math.sin(bearing * D2R), Math.cos(bearing * D2R)]; // vers l'observateur
   const right: XY = [-v[1], v[0]];
   const ce = Math.cos(elevation * D2R);

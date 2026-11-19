@@ -108,6 +108,8 @@ export async function ignBuildings(minLon: number, minLat: number, maxLon: numbe
   u.searchParams.set("COUNT", "500");
   const r = await fetchWithRetry(u.toString());
   const j = (await r.json()) as any;
+  // une réponse sans liste d'objets est une erreur du service (pas « aucun bâtiment »)
+  if (!Array.isArray(j?.features)) throw new Error("Réponse WFS invalide");
   const out: Building[] = [];
   for (const f of j.features ?? []) {
     const g = f.geometry;

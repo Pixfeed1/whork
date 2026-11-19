@@ -15,6 +15,7 @@ import {
 } from "../../shared/roof";
 import { ignOrtho, toL93 } from "../providers/ign";
 import { roofView, fitPolys, VIEW_BEARINGS } from "../../shared/view3d";
+import { computeFacades, OPENING_LABEL, type FacadesResult } from "../../shared/facades";
 import { createRequire } from "node:module";
 
 // Police Montserrat (repli sur Helvetica si indisponible)
@@ -54,6 +55,8 @@ export interface TileImagery {
 
 export interface ReportInput {
   tiles?: TileImagery | null;
+  /** photos Street View des façades (clé de façade -> image) */
+  facadePhotos?: Map<string, { img: Buffer; date?: string | null }>;
   org: ReportOrg;
   number: string;
   date: Date;
@@ -344,6 +347,122 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12).text("Observations", M, y);
     doc.fillColor("#111").font(fontsInUse.reg).fontSize(9.5).text(input.notes, M, y + 18, { width: A4.w - 2 * M });
     y = doc.y + 14;
+  }
+
+  // ---------- métré des façades ----------
+  if (input.model.facades?.enabled) {
+    const fr = computeFacades(input.model);
+    if (fr.facades.length) {
+      doc.addPage();
+      header(doc, input);
+      doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Métré des façades", M, 140);
+      // plan des façades
+      drawFacadePlan(doc, input.model, fr, { x: M, y: 162, w: A4.w - 2 * M, h: 250 });
+      let fy = 422;
+      const ft = fr.totals;
+      const ftiles: [string, string][] = [
+        ["Surface brute", `${nf(ft.gross)} m²`],
+        ["Ouvertures déduites", `${nf(ft.openings)} m²`],
+        ["Surface nette à traiter", `${nf(ft.net)} m²`],
+        ["Façades · linéaire", `${ft.count} · ${nf(ft.length)} m`],
+      ];
+      const ftw = (A4.w - 2 * M - 3 * 8) / 4;
+      ftiles.forEach(([label, val], i) => {
+        const x = M + i * (ftw + 8);
+        doc.roundedRect(x, fy, ftw, 46, 6).fillColor("#f3f6fa").fill();
+        doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7.5).text(label, x + 8, fy + 7, { width: ftw - 16 });
+        doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12.5).text(val, x + 8, fy + 23, { width: ftw - 16 });
+      });
+      fy += 58;
+      fy = table(
+        doc,
+        fy,
+        ["N°", "Façade", "Long. (m)", "H. égout", "Brute m²", "Pignon m²", "Ouvert. m²", "Nette m²"],
+        [42, 108, 58, 55, 60, 60, 64, 68],
+        fr.facades.map((f) => [
+          `F${f.index}`,
+          f.label,
+          nf(f.length),
+          nf(f.eaveHeight),
+          nf(f.grossArea),
+          f.gableArea > 0.05 ? nf(f.gableArea) : "",
+          f.excluded ? "" : nf(f.openingsArea),
+          f.excluded ? (f.mitoyenAuto ? "mitoyenne" : "exclue") : nf(f.netArea),
+        ]),
+        ["Total", "", nf(ft.length), "", nf(ft.gross), "", nf(ft.openings), nf(ft.net)],
+        () => {
+          doc.addPage();
+          header(doc, input);
+          return 140;
+        },
+      );
+      const ops = fr.facades.flatMap((f) =>
+        f.excluded ? [] : (input.model.facades?.overrides?.[f.key]?.openings ?? []).map((o) => ({ f, o })),
+      );
+      fy += 8;
+      doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7.5).text(
+        `Surfaces brutes calculées du sol à la toiture le long de chaque mur (pignons compris). Hauteurs ${fr.heightSource === "relevé" ? "mesurées sur le relevé 3D" : "estimées (hauteur d'égout par défaut)"}. Murs mitoyens exclus. Ouvertures ${ops.length ? "saisies" : "déduites forfaitairement"}. À confirmer sur site.`,
+        M,
+        fy,
+        { width: A4.w - 2 * M },
+      );
+      fy = doc.y + 12;
+      if (ops.length) {
+        if (fy > A4.h - 150) {
+          doc.addPage();
+          header(doc, input);
+          fy = 140;
+        }
+        doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(11).text("Ouvertures déduites", M, fy);
+        fy += 16;
+        fy = table(
+          doc,
+          fy,
+          ["Façade", "Type", "Nombre", "Dimensions (m)", "Surface (m²)"],
+          [140, 120, 60, 110, 85],
+          ops.map(({ f, o }) => [`F${f.index} · ${f.label}`, OPENING_LABEL[o.type], String(o.count), `${nf(o.width, 2)} × ${nf(o.height, 2)}`, nf(o.count * o.width * o.height)]),
+          null,
+          () => {
+            doc.addPage();
+            header(doc, input);
+            return 140;
+          },
+        );
+      }
+      // photos Street View
+      const shots = fr.facades.filter((f) => !f.excluded && input.facadePhotos?.get(f.key));
+      if (shots.length) {
+        doc.addPage();
+        header(doc, input);
+        doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Façades vues depuis la rue", M, 140);
+        const pw = (A4.w - 2 * M - 14) / 2;
+        const ph = pw * (420 / 640);
+        let i = 0;
+        let py = 166;
+        for (const f of shots) {
+          if (py + ph + 30 > A4.h - 60) {
+            doc.addPage();
+            header(doc, input);
+            py = 140;
+            i = 0;
+          }
+          const x = M + (i % 2) * (pw + 14);
+          const ph0 = input.facadePhotos!.get(f.key)!;
+          try {
+            doc.save();
+            doc.roundedRect(x, py, pw, ph, 6).clip();
+            doc.image(ph0.img, x, py, { width: pw, height: ph });
+            doc.restore();
+          } catch {
+            doc.restore();
+          }
+          doc.fillColor(INK).font(fontsInUse.bold).fontSize(8.5).text(`F${f.index} · ${f.label}`, x, py + ph + 4, { width: pw * 0.65, lineBreak: false });
+          doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7).text(`Street View${ph0.date ? ` (${ph0.date})` : ""} · © Google`, x + pw * 0.45, py + ph + 5, { width: pw * 0.55, align: "right", lineBreak: false });
+          i++;
+          if (i % 2 === 0) py += ph + 26;
+        }
+      }
+    }
   }
 
   // détail des arêtes
@@ -668,6 +787,38 @@ function drawOverlay(
   const s = ptPerM;
   scaleBar(doc, box.x + 12, box.y + box.h - 22, s, hasImage);
   northArrow(doc, box.x + box.w - 20, box.y + 10, hasImage);
+}
+
+/** plan des façades : contour du bâtiment, façades numérotées et cotées */
+function drawFacadePlan(doc: PDFKit.PDFDocument, model: RoofModel, fr: FacadesResult, box: Box) {
+  const frame = makeFrame(model.origin[0], model.origin[1]);
+  const loc = (p: LonLat) => toLocal(frame, p);
+  const pts = [...fr.facades.flatMap((f) => f.segments.flat().map(loc)), ...model.faces.flatMap((f) => f.ring.map(loc))];
+  if (!pts.length) return;
+  const { s, f } = fitTransform(pts, box, 34);
+  const P = (p: LonLat) => f(loc(p));
+  doc.save();
+  doc.roundedRect(box.x, box.y, box.w, box.h, 8).fillColor("#f8fafc").fill();
+  for (const face of model.faces) doc.polygon(...face.ring.map(P)).fillColor("#e5e7eb").fill();
+  for (const fc of fr.facades) {
+    for (const [a, b] of fc.segments) {
+      const pa = P(a);
+      const pb = P(b);
+      doc.moveTo(pa[0], pa[1]).lineTo(pb[0], pb[1]).lineWidth(4).strokeColor(fc.excluded ? "#9ca3af" : "#ea580c").stroke();
+    }
+    // étiquette à l'extérieur, devant la façade
+    const m = loc(fc.mid);
+    const az = (fc.azimuth * Math.PI) / 180;
+    const q = f([m[0] + Math.sin(az) * 1.6, m[1] + Math.cos(az) * 1.6]);
+    const label = fc.length >= 2 ? `F${fc.index} · ${nf(fc.length, 2)} m` : `F${fc.index}`;
+    doc.font(fontsInUse.bold).fontSize(7.5);
+    const tw = doc.widthOfString(label) + 8;
+    doc.roundedRect(q[0] - tw / 2, q[1] - 6.5, tw, 13, 3).fillColor(fc.excluded ? "#9ca3af" : "#ea580c").fill();
+    doc.fillColor("#ffffff").text(label, q[0] - tw / 2 + 4, q[1] - 3.8, { lineBreak: false });
+  }
+  scaleBar(doc, box.x + 10, box.y + box.h - 18, s);
+  northArrow(doc, box.x + box.w - 18, box.y + 6);
+  doc.restore();
 }
 
 function drawPlan(

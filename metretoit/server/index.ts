@@ -20,6 +20,8 @@ import { gateMiddleware, gateGet, gatePost } from "./gate";
 import { randomBytes, createHash } from "node:crypto";
 import { googleKey, googleGeocode } from "./providers/google";
 import { googleTilesAvailable, fetchGoogleTile } from "./providers/googleTiles";
+import { facadeStreetView } from "./providers/streetview";
+import { computeFacades, type FacadeMetrics } from "../shared/facades";
 import { analyzeRoof, fitFace, type SourcePref } from "./analysis/pipeline";
 import { generateReport } from "./pdf/report";
 import { computeMetrics, type RoofModel, type EdgeType, EDGE_TYPES } from "../shared/roof";
@@ -116,9 +118,47 @@ function sanitizeModel(m: any): RoofModel {
     faces,
     edgeOverrides,
     footprint,
+    footprintMitoyen:
+      footprint && Array.isArray(m.footprintMitoyen) && m.footprintMitoyen.length === footprint.length
+        ? m.footprintMitoyen.map((x: unknown) => !!x)
+        : null,
+    facades: sanitizeFacades(m.facades),
     elements,
     meta: m.meta && typeof m.meta === "object" ? JSON.parse(JSON.stringify(m.meta).slice(0, 50000)) : {},
   };
+}
+
+function sanitizeFacades(f: any) {
+  if (!f || typeof f !== "object") return null;
+  const OT = new Set(["fenetre", "porte_fenetre", "porte", "garage", "baie", "autre"]);
+  const clamp = (v: unknown, lo: number, hi: number) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : null;
+  };
+  const overrides: Record<string, any> = {};
+  for (const [k, v] of Object.entries(f.overrides ?? {}).slice(0, 200)) {
+    if (!/^f\d{1,3}$/.test(k) || !v || typeof v !== "object") continue;
+    const o: any = v;
+    overrides[k] = {
+      excluded: o.excluded == null ? null : !!o.excluded,
+      eaveHeight: o.eaveHeight == null ? null : clamp(o.eaveHeight, 0.5, 40),
+      deductPct: o.deductPct == null ? null : clamp(o.deductPct, 0, 90),
+      openings: (Array.isArray(o.openings) ? o.openings : []).slice(0, 100).flatMap((op: any) =>
+        OT.has(op?.type)
+          ? [
+              {
+                id: str(op.id, 60) || uid(),
+                type: op.type,
+                count: Math.round(clamp(op.count, 0, 500) ?? 1),
+                width: clamp(op.width, 0.1, 30) ?? 1,
+                height: clamp(op.height, 0.1, 30) ?? 1,
+              },
+            ]
+          : [],
+      ),
+    };
+  }
+  return { enabled: !!f.enabled, defaultDeductPct: clamp(f.defaultDeductPct, 0, 90) ?? 0, overrides };
 }
 
 function studyRow(s: any, withModel = false) {
@@ -589,6 +629,50 @@ app.get(
   }),
 );
 
+// ---------------- façades : photo Street View (mise en cache) ----------------
+/** renvoie la photo d'une façade, depuis le cache ou Google ; null si indisponible */
+export async function streetViewFor(studyId: string, model: RoofModel, f: FacadeMetrics, force = false) {
+  const sig = `${f.mid[0].toFixed(5)},${f.mid[1].toFixed(5)},${f.azimuth}`;
+  const c = one<any>("SELECT * FROM streetviews WHERE study_id = ? AND fkey = ?", studyId, f.key);
+  if (c && c.sig === sig && !force) return { img: c.img ? Buffer.from(c.img) : null, info: JSON.parse(c.info) };
+  let shot;
+  try {
+    shot = await facadeStreetView(model, f);
+  } catch (e: any) {
+    // API non autorisée : on ne met pas en cache, pour réessayer une fois réglé
+    return { img: null, info: { reason: e.message } };
+  }
+  const info = "img" in shot ? { date: shot.date, heading: shot.heading } : { reason: shot.reason };
+  const img = "img" in shot ? shot.img : null;
+  run(
+    "INSERT OR REPLACE INTO streetviews(study_id, fkey, sig, img, info, created_at) VALUES(?, ?, ?, ?, ?, ?)",
+    studyId,
+    f.key,
+    sig,
+    img,
+    JSON.stringify(info),
+    now(),
+  );
+  return { img, info };
+}
+
+app.get(
+  "/api/studies/:id/facades/:key/streetview.jpg",
+  requireAuth,
+  wrap(async (req, res) => {
+    const s = getStudy(req);
+    const model: RoofModel = JSON.parse(s.model);
+    const f = computeFacades(model).facades.find((x) => x.key === req.params.key);
+    if (!f) throw new HttpError(404, "Façade introuvable");
+    const r = await streetViewFor(s.id, model, f, req.query.force === "1");
+    if (!r.img) return res.status(404).json({ error: r.info.reason ?? "Pas de photo" });
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    if (r.info.date) res.setHeader("X-Photo-Date", String(r.info.date));
+    res.send(r.img);
+  }),
+);
+
 app.delete("/api/studies/:id", requireAuth, (req, res) => {
   const s = getStudy(req);
   run("DELETE FROM studies WHERE id = ?", s.id);
@@ -609,6 +693,8 @@ app.post(
       overhang: Number.isFinite(overhang) ? Math.max(0, Math.min(2, overhang)) : undefined,
     });
     logUsage(req.user!.orgId, "analysis");
+    // les saisies de façades (ouvertures, exclusions) sont conservées
+    if (JSON.parse(s.model)?.facades) model.facades = JSON.parse(s.model).facades;
     saveModel(s.id, model, false);
     res.json(studyRow(one("SELECT * FROM studies WHERE id = ?", s.id), true));
   }),
@@ -650,7 +736,16 @@ app.post(
           credit: "Google",
         }
       : null;
+    // photos Street View des façades retenues
+    const facadePhotos = new Map<string, { img: Buffer; date?: string | null }>();
+    if (model.facades?.enabled) {
+      for (const f of computeFacades(model).facades.filter((x) => !x.excluded)) {
+        const r = await streetViewFor(s.id, model, f).catch(() => null);
+        if (r?.img) facadePhotos.set(f.key, { img: r.img, date: r.info?.date ?? null });
+      }
+    }
     const pdf = await generateReport({
+      facadePhotos,
       tiles,
       org: { ...org, logo: org.logo ? Buffer.from(org.logo) : null },
       number,

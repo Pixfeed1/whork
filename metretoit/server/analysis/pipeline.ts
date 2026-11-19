@@ -7,6 +7,7 @@ import {
   pointInPolygon,
   distToPolygonBoundary,
   centroid,
+  polygonArea,
 } from "../../shared/geo";
 import { type RoofModel, type RoofFace, type RoofElement, newId } from "../../shared/roof";
 import { ignBuildings, ignDsm, toL93, type Building } from "../providers/ign";
@@ -25,14 +26,18 @@ export interface AnalyzeInput {
 
 const DEG_LAT = 1 / 111000;
 
-async function loadBuildings(p: LonLat, radius = 70): Promise<Building[]> {
+async function loadBuildings(p: LonLat, radius = 70): Promise<Building[] | null> {
   const dLat = radius * DEG_LAT;
   const dLon = dLat / Math.cos((p[1] * Math.PI) / 180);
-  try {
-    return await ignBuildings(p[0] - dLon, p[1] - dLat, p[0] + dLon, p[1] + dLat);
-  } catch {
-    return [];
+  // le service WFS de l'IGN a parfois des ratés passagers : on réessaie avant d'abandonner
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await ignBuildings(p[0] - dLon, p[1] - dLat, p[0] + dLon, p[1] + dLat);
+    } catch {
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
   }
+  return null; // service indisponible
 }
 
 function pickBuilding(bs: Building[], p: LonLat): Building | null {
@@ -88,7 +93,8 @@ async function getDsm(
 export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
   const warnings: string[] = [];
   const p0 = input.points[0];
-  const buildings = await loadBuildings(p0);
+  const loaded = await loadBuildings(p0);
+  const buildings = loaded ?? [];
   const targetsB: Building[] = [];
   for (const p of input.points) {
     const b = pickBuilding(buildings, p);
@@ -106,7 +112,11 @@ export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
   let targets: XY[][] = targetsB.map((b) => b.ring.map((q) => toLocal(frame, q)));
   let align = true;
   if (!targets.length) {
-    warnings.push("Bâtiment introuvable dans la BD TOPO : contours à vérifier.");
+    warnings.push(
+      loaded === null
+        ? "Le service des bâtiments de l'IGN n'a pas répondu : relancez la détection dans quelques instants."
+        : "Bâtiment introuvable dans la BD TOPO : contours à vérifier.",
+    );
     const s = 9;
     const c = toLocal(frame, p0);
     targets = [
@@ -176,9 +186,36 @@ export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
       })
     : null;
 
+  // murs mitoyens : un bâtiment voisin touche le côté de l'emprise
+  let footprintMitoyen: boolean[] | null = null;
+  if (targetsB.length) {
+    const fp = targets[0].map((p) => [p[0] + shift[0], p[1] + shift[1]] as XY);
+    const nbs = neighbors.map((r) => r.map((p) => [p[0] + shift[0], p[1] + shift[1]] as XY));
+    const ccw = polygonArea(fp) > 0;
+    footprintMitoyen = fp.map((a, i) => {
+      const b = fp[(i + 1) % fp.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (L < 0.3) return false;
+      // normale extérieure
+      let nx = (b[1] - a[1]) / L;
+      let ny = -(b[0] - a[0]) / L;
+      if (!ccw) {
+        nx = -nx;
+        ny = -ny;
+      }
+      let hits = 0;
+      for (const t of [0.2, 0.5, 0.8]) {
+        const q: XY = [a[0] + (b[0] - a[0]) * t + nx * 0.6, a[1] + (b[1] - a[1]) * t + ny * 0.6];
+        if (nbs.some((nb) => pointInPolygon(q, nb))) hits++;
+      }
+      return hits >= 2;
+    });
+  }
+
   return {
     version: 1,
     origin,
+    footprintMitoyen,
     faces,
     elements,
     edgeOverrides: {},

@@ -8,6 +8,10 @@ toiture à partir d'un relevé 3D aérien et calcule automatiquement :
 - linéaires : **faîtages, arêtiers, noues, égouts, rives, solins / rives hautes, changements de pente** ;
 - **cheminées** (détectées automatiquement, à vérifier), **fenêtres de toit** et **lucarnes** placées en un clic,
   avec le calcul de leurs raccords : solins amont, à gradins, de base, contre-solin, abergements ;
+- **métré des façades** (onglet « Façades ») : surface brute de chaque façade du sol à la toiture (pignons
+  compris), murs mitoyens exclus automatiquement, hauteur à l'égout mesurée (modifiable), ouvertures saisies
+  (fenêtres, portes, baies…) ou déduction en %, photo **Street View** de chaque façade visible depuis la rue,
+  et une partie « Métré des façades » dans le rapport ;
 - rapport **PDF** à l'en-tête de l'entreprise : vue aérienne annotée et cotée, plan coté des longueurs, plan des
   pans, **vues 3D sous 4 angles**, tableaux récapitulatifs, éléments et raccords, **surface à commander selon le
   taux de chutes** (0 à 20 %), détail de chaque arête.
@@ -88,7 +92,9 @@ La base est un fichier SQLite dans `DATA_DIR` : sauvegarder ce dossier (copie qu
 
 Voir `.env.example`. Principales variables :
 
-- `GOOGLE_MAPS_API_KEY` : active Google Solar API (APIs à activer : *Solar API*, *Geocoding API*).
+- `GOOGLE_MAPS_API_KEY` : active les services Google. APIs à activer et à autoriser sur la clé :
+  *Solar API* (relevé 3D), *Geocoding API*, *Map Tiles API* (photos HD de l'éditeur et du rapport),
+  *Street View Static API* (photos des façades). Restreindre la clé à l'adresse IP du serveur.
 - `ALLOW_SIGNUP=false` : ferme les inscriptions publiques (usage interne d'une seule entreprise).
 - `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` : active les abonnements payants
   (essai gratuit de `TRIAL_STUDIES` études, puis abonnement). Webhook Stripe à déclarer sur

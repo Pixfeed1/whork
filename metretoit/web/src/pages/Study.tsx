@@ -17,6 +17,8 @@ import { addFace, deleteFace, deleteVertex, setEdgeType, splitFace, updateFace, 
 import { api, fmtDateTime, type Report, type Study } from "../api";
 import { RoofEditor, type Selection, type Tool, type Basemap } from "../components/RoofEditor";
 import { View3D } from "../components/View3D";
+import { FacadesPanel } from "../components/FacadesPanel";
+import { computeFacades } from "../../../shared/facades";
 import { FACE_COLORS } from "../components/mapStyle";
 import { ReportTable } from "./Reports";
 import { useAuth } from "../App";
@@ -75,7 +77,8 @@ export function StudyPage() {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [fitKey, setFitKey] = useState("init");
-  const [tab, setTab] = useState<"metre" | "infos" | "rapports">("metre");
+  const [tab, setTab] = useState<"metre" | "facades" | "infos" | "rapports">("metre");
+  const [hlFacade, setHlFacade] = useState<string | null>(null);
   const dirtyModel = useRef(false);
 
   useEffect(() => {
@@ -90,6 +93,13 @@ export function StudyPage() {
   }, [id]);
 
   const metrics = useMemo(() => (model ? computeMetrics(model) : null), [model]);
+  const facadesForMap = useMemo(
+    () =>
+      model && tab === "facades" && model.facades?.enabled
+        ? computeFacades(model).facades.map((f) => ({ key: f.key, index: f.index, segments: f.segments, excluded: f.excluded, mid: f.mid }))
+        : null,
+    [model, tab],
+  );
 
   // ---------- historique + sauvegarde automatique ----------
   const commit = useCallback(
@@ -349,6 +359,8 @@ export function StudyPage() {
           onModel={commit}
           onAddFace={onAddFace}
           onSplit={onSplit}
+          facades={facadesForMap}
+          hlFacade={hlFacade}
           onAddElement={(ll) => {
             const r = addElement(model, eltType, ll);
             commit(r.model);
@@ -601,7 +613,8 @@ export function StudyPage() {
         <div className="tabs">
           {(
             [
-              ["metre", "Métré"],
+              ["metre", "Toiture"],
+              ["facades", "Façades"],
               ["infos", "Infos"],
               ["rapports", `Rapports (${reports.length})`],
             ] as const
@@ -708,6 +721,7 @@ export function StudyPage() {
           </>
         )}
 
+        {tab === "facades" && <FacadesPanel model={model} studyId={study.id} onChange={commit} onHover={setHlFacade} />}
         {tab === "infos" && <View3D model={model} />}
         {tab === "infos" && (
           <StudyInfo

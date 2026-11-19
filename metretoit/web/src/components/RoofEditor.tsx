@@ -25,6 +25,9 @@ interface Props {
   onAddFace: (ring: LonLat[]) => void;
   onSplit: (a: LonLat, b: LonLat) => void;
   onAddElement: (ll: LonLat) => void;
+  /** façades à afficher (onglet Façades) */
+  facades?: { key: string; index: number; segments: [LonLat, LonLat][]; excluded: boolean; mid: LonLat }[] | null;
+  hlFacade?: string | null;
   showLabels: boolean;
   highlightType: string | null;
   basemap: Basemap;
@@ -64,7 +67,7 @@ export function RoofEditor(p: Props) {
     m.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     m.on("load", () => {
       const add = (id: string) => m.addSource(id, { type: "geojson", data: EMPTY });
-      ["faces", "edges", "verts", "draft", "foot", "elts"].forEach(add);
+      ["faces", "edges", "verts", "draft", "foot", "elts", "facs"].forEach(add);
       m.addLayer({ id: "foot", type: "line", source: "foot", paint: { "line-color": "#facc15", "line-width": 1.2, "line-dasharray": [3, 2] } });
       m.addLayer({
         id: "faces-fill",
@@ -91,6 +94,17 @@ export function RoofEditor(p: Props) {
         },
       });
       m.addLayer({ id: "edges-hit", type: "line", source: "edges", paint: { "line-color": "#000", "line-width": 16, "line-opacity": 0.001 } });
+      m.addLayer({
+        id: "facs",
+        type: "line",
+        source: "facs",
+        layout: { "line-cap": "round" },
+        paint: {
+          "line-color": ["case", ["get", "off"], "#9ca3af", "#ea580c"],
+          "line-width": ["case", ["get", "hl"], 9, 5],
+          "line-opacity": 0.95,
+        },
+      });
       m.addLayer({
         id: "elts-fill",
         type: "fill",
@@ -206,6 +220,17 @@ export function RoofEditor(p: Props) {
         geometry: { type: "Polygon", coordinates: [[...el.ring, el.ring[0]]] },
       })),
     });
+    const fl = props.current.facades;
+    src("facs").setData({
+      type: "FeatureCollection",
+      features: (fl ?? []).flatMap((f) =>
+        f.segments.map((sg) => ({
+          type: "Feature" as const,
+          properties: { off: f.excluded, hl: props.current.hlFacade === f.key },
+          geometry: { type: "LineString" as const, coordinates: sg },
+        })),
+      ),
+    });
     src("foot").setData(
       model.footprint
         ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [...model.footprint, model.footprint[0]] } }
@@ -234,7 +259,7 @@ export function RoofEditor(p: Props) {
     markers.current = [];
     if (!m || !props.current.showLabels) return;
     const { metrics, model } = props.current;
-    for (const e of metrics.edges) {
+    for (const e of props.current.facades ? [] : metrics.edges) {
       if (e.length < 0.5) continue;
       const div = document.createElement("div");
       div.className = "edge-label";
@@ -242,6 +267,13 @@ export function RoofEditor(p: Props) {
       div.textContent = e.length.toLocaleString("fr-FR", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
       markers.current.push(new maplibregl.Marker({ element: div }).setLngLat([(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2]).addTo(m));
     }
+    for (const f of props.current.facades ?? []) {
+      const div = document.createElement("div");
+      div.className = `fac-label ${f.excluded ? "off" : ""}`;
+      div.textContent = `F${f.index}`;
+      markers.current.push(new maplibregl.Marker({ element: div }).setLngLat(f.mid as [number, number]).addTo(m));
+    }
+    if (props.current.facades) return; // en mode façades, on n'affiche pas les étiquettes des pans
     metrics.faces.forEach((f, i) => {
       const div = document.createElement("div");
       div.className = "face-label";
@@ -256,7 +288,7 @@ export function RoofEditor(p: Props) {
     if (!ready) return;
     render(p.model, p.metrics);
     renderLabels();
-  }, [ready, p.model, p.metrics, p.selection, p.highlightType, p.showLabels, p.tool]);
+  }, [ready, p.model, p.metrics, p.selection, p.highlightType, p.showLabels, p.tool, p.facades, p.hlFacade]);
 
   // changement d'outil : on vide les tracés en cours
   useEffect(() => {

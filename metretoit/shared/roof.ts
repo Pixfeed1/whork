@@ -105,6 +105,10 @@ export interface RoofModel {
   edgeOverrides: Record<string, EdgeType>;
   /** emprise du bâtiment (cadastre / BD TOPO) pour affichage */
   footprint?: LonLat[] | null;
+  /** pour chaque côté de l'emprise : mur mitoyen (bâtiment voisin collé) */
+  footprintMitoyen?: boolean[] | null;
+  /** métré des façades : réglages et saisies (ouvertures, exclusions…) */
+  facades?: import("./facades").FacadesConfig | null;
   meta?: Record<string, unknown>;
 }
 
