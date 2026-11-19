@@ -640,7 +640,16 @@ app.post(
     if (!model.faces.length) throw bad("Aucun pan : impossible d'établir un rapport");
     const org = one<any>("SELECT * FROM organizations WHERE id = ?", req.user!.orgId);
     const number = await nextReportNumber(org.id);
+    // photo du rapport : tuiles Google HD si disponibles, sinon orthophoto IGN
+    const tiles = (await googleTilesAvailable().catch(() => false))
+      ? {
+          fetch: async (z: number, x: number, y: number) => (await fetchGoogleTile(z, x, y))?.body ?? null,
+          maxZoom: 21,
+          credit: "Google",
+        }
+      : null;
     const pdf = await generateReport({
+      tiles,
       org: { ...org, logo: org.logo ? Buffer.from(org.logo) : null },
       number,
       date: new Date(),

@@ -44,7 +44,15 @@ export interface ReportOrg {
   logo_mime?: string | null;
 }
 
+/** Source de photos aériennes en tuiles (Web Mercator z/x/y), ex. Google Map Tiles */
+export interface TileImagery {
+  fetch: (z: number, x: number, y: number) => Promise<Buffer | null>;
+  maxZoom: number;
+  credit: string;
+}
+
 export interface ReportInput {
+  tiles?: TileImagery | null;
   org: ReportOrg;
   number: string;
   date: Date;
@@ -127,7 +135,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
 
   // vue aérienne
   const imgBox = { x: M, y, w: A4.w - 2 * M, h: 330 };
-  await drawAerial(doc, input.model, metrics, imgBox, allPts);
+  const imageryCredit = await drawAerial(doc, input.model, metrics, imgBox, allPts, input.tiles ?? null);
   y = imgBox.y + imgBox.h + 14;
 
   // chiffres clés
@@ -169,7 +177,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     y = doc.y + 8;
   }
   const warn = (input.model.meta?.warnings as string[] | undefined) ?? [];
-  const src = sourceText(input.model);
+  const src = sourceText(input.model, imageryCredit);
   doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7.5).text(src, M, Math.min(y, A4.h - 95), { width: A4.w - 2 * M });
   if (warn.length) doc.fillColor("#b45309").text(warn.join(" "), { width: A4.w - 2 * M });
 
@@ -401,12 +409,12 @@ export function wasteRates(own: number): number[] {
   return r;
 }
 
-function sourceText(model: RoofModel): string {
+function sourceText(model: RoofModel, imagery = "IGN (Géoplateforme)"): string {
   const m = model.meta ?? {};
   const parts: string[] = [];
   if (m.dsmSource) parts.push(`Relevé 3D : ${m.dsmSource}`);
   if (m.imageryDate) parts.push(`date des images : ${m.imageryDate}`);
-  parts.push("Orthophotographie : IGN (Géoplateforme)");
+  parts.push(`Photographie aérienne : ${imagery}`);
   if ((m.google as any)?.wholeRoofArea)
     parts.push(`contrôle Google Solar API : ${nf((m.google as any).wholeRoofArea)} m² sur ${(m.google as any).segmentCount} segments`);
   if (model.faces.some((f) => f.source === "manual")) parts.push("pans corrigés ou dessinés manuellement");
@@ -493,7 +501,99 @@ function scaleBar(doc: PDFKit.PDFDocument, x: number, y: number, s: number, ligh
   doc.restore();
 }
 
-async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: RoofMetrics, box: Box, pts: LonLat[]) {
+// ---------- photo aérienne en tuiles (plus nette que le WMS IGN) ----------
+const merc = (p: LonLat): XY => {
+  const lat = Math.max(-85, Math.min(85, p[1])) * (Math.PI / 180);
+  return [((p[0] + 180) / 360) * 256, ((1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2) * 256];
+};
+
+async function drawTiledImagery(
+  doc: PDFKit.PDFDocument,
+  box: Box,
+  pts: LonLat[],
+  tiles: TileImagery,
+): Promise<{ f: (p: LonLat) => XY; mPerPt: number } | null> {
+  const m = pts.map(merc);
+  let x0 = Math.min(...m.map((p) => p[0]));
+  let x1 = Math.max(...m.map((p) => p[0]));
+  let y0 = Math.min(...m.map((p) => p[1]));
+  let y1 = Math.max(...m.map((p) => p[1]));
+  const pad = Math.max(1e-5, 0.1 * Math.max(x1 - x0, y1 - y0));
+  x0 -= pad;
+  x1 += pad;
+  y0 -= pad;
+  y1 += pad;
+  const ratio = box.w / box.h;
+  if ((x1 - x0) / (y1 - y0) > ratio) {
+    const h = (x1 - x0) / ratio;
+    const c = (y0 + y1) / 2;
+    y0 = c - h / 2;
+    y1 = c + h / 2;
+  } else {
+    const w = (y1 - y0) * ratio;
+    const c = (x0 + x1) / 2;
+    x0 = c - w / 2;
+    x1 = c + w / 2;
+  }
+  // zoom visé : environ 2000 pixels sur la largeur de l'image
+  let z = Math.min(tiles.maxZoom, Math.ceil(Math.log2(2000 / (x1 - x0))));
+  for (let attempt = 0; attempt < 3 && z >= 15; attempt++, z--) {
+    const k = 2 ** z;
+    const tx0 = Math.floor((x0 * k) / 256);
+    const tx1 = Math.floor((x1 * k) / 256);
+    const ty0 = Math.floor((y0 * k) / 256);
+    const ty1 = Math.floor((y1 * k) / 256);
+    if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 120) continue;
+    const jobs: { x: number; y: number }[] = [];
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) jobs.push({ x: tx, y: ty });
+    const imgs: (Buffer | null)[] = new Array(jobs.length).fill(null);
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: 8 }, async () => {
+        while (next < jobs.length) {
+          const i = next++;
+          imgs[i] = await tiles.fetch(z, jobs[i].x, jobs[i].y).catch(() => null);
+        }
+      }),
+    );
+    if (imgs.some((b) => !b)) continue; // zoom indisponible ici : on descend d'un niveau
+    const s = box.w / ((x1 - x0) * k); // points PDF par pixel de tuile
+    jobs.forEach((j, i) => {
+      doc.image(imgs[i]!, box.x + (j.x * 256 - x0 * k) * s, box.y + (j.y * 256 - y0 * k) * s, { width: 256 * s + 0.4, height: 256 * s + 0.4 });
+    });
+    const latc = ((Math.atan(Math.sinh(Math.PI * (1 - (2 * (y0 + y1)) / 2 / 256))) * 180) / Math.PI) * (Math.PI / 180);
+    const mPerPx = (156543.03392 * Math.cos(latc)) / k;
+    return {
+      f: (p: LonLat): XY => {
+        const q = merc(p);
+        return [box.x + (q[0] * k - x0 * k) * s, box.y + (q[1] * k - y0 * k) * s];
+      },
+      mPerPt: mPerPx / s,
+    };
+  }
+  return null;
+}
+
+async function drawAerial(
+  doc: PDFKit.PDFDocument,
+  model: RoofModel,
+  metrics: RoofMetrics,
+  box: Box,
+  pts: LonLat[],
+  tiles: TileImagery | null,
+): Promise<string> {
+  if (tiles) {
+    doc.save();
+    doc.roundedRect(box.x, box.y, box.w, box.h, 6).clip();
+    const t = await drawTiledImagery(doc, box, pts, tiles).catch(() => null);
+    if (t) {
+      drawOverlay(doc, model, metrics, box, t.f, 1 / t.mPerPt, true);
+      doc.font(fontsInUse.reg).fontSize(6).fillColor("#ffffff").text(`Imagerie © ${tiles.credit}`, box.x + box.w - 110, box.y + box.h - 11, { width: 104, align: "right", lineBreak: false });
+      doc.restore();
+      return tiles.credit;
+    }
+    doc.restore();
+  }
   // emprise Lambert-93 au ratio de la boîte
   const l93 = pts.map((p) => toL93(p));
   let x0 = Math.min(...l93.map((p) => p[0]));
@@ -531,6 +631,21 @@ async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: Ro
   } catch {
     doc.rect(box.x, box.y, box.w, box.h).fillColor("#e5e7eb").fill();
   }
+  drawOverlay(doc, model, metrics, box, f, box.w / (x1 - x0), hasImage);
+  doc.restore();
+  return "IGN (Géoplateforme)";
+}
+
+/** contours, arêtes cotées, éléments, numéros de pans, échelle et nord */
+function drawOverlay(
+  doc: PDFKit.PDFDocument,
+  model: RoofModel,
+  metrics: RoofMetrics,
+  box: Box,
+  f: (p: LonLat) => XY,
+  ptPerM: number,
+  hasImage: boolean,
+) {
   for (const face of model.faces) {
     const r = face.ring.map(f);
     doc.polygon(...r).fillColor("#ffffff").fillOpacity(0.12).fill();
@@ -543,16 +658,15 @@ async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: Ro
   }
   drawElements(doc, metrics, f, true);
   // cotes de chaque arête directement sur la photo
-  drawEdgeLabels(doc, metrics, f, Math.max(5.5, Math.min(7.5, (box.w / (x1 - x0)) * 0.42)), 16);
+  drawEdgeLabels(doc, metrics, f, Math.max(5.5, Math.min(7.5, ptPerM * 0.42)), 16);
   for (const fm of metrics.faces) {
     const c = f(fm.centroid);
     doc.circle(c[0], c[1], 8).fillColor("#ffffff").fill();
     doc.fillColor("#111").font(fontsInUse.bold).fontSize(8).text(String(fm.index), c[0] - 8, c[1] - 3.5, { width: 16, align: "center" });
   }
-  const s = box.w / (x1 - x0);
+  const s = ptPerM;
   scaleBar(doc, box.x + 12, box.y + box.h - 22, s, hasImage);
   northArrow(doc, box.x + box.w - 20, box.y + 10, hasImage);
-  doc.restore();
 }
 
 function drawPlan(
