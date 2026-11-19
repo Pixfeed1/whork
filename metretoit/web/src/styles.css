@@ -2111,3 +2111,45 @@ mark.todo {
     height: calc(100dvh - 56px);
   }
 }
+
+/* éléments de toiture */
+.lin-list li.static {
+  cursor: default;
+}
+.lin-list li.sub {
+  font-size: 0.84rem;
+  color: #4b5563;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.mini-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 10px;
+  font-size: 0.84rem;
+}
+.mini-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e5e7eb;
+}
+.view3d {
+  background: #f4f7fa;
+  border-radius: 12px;
+  padding: 8px;
+  margin-bottom: 14px;
+}
+.view3d svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.view3d-ctrl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 0;
+}

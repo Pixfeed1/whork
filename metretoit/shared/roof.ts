@@ -17,6 +17,7 @@ import {
   polygonArea,
   centroid,
   distPointSegment,
+  pointInPolygon,
 } from "./geo";
 
 export type EdgeType = "faitage" | "aretier" | "noue" | "egout" | "rive" | "solin" | "bris";
@@ -58,10 +59,49 @@ export interface RoofFace {
   source?: "auto" | "manual" | "google";
 }
 
+// ---------- éléments de toiture (cheminées, fenêtres de toit, lucarnes) ----------
+export type ElementType = "cheminee" | "chassis" | "lucarne";
+
+export const ELEMENT_TYPES: { type: ElementType; label: string; plural: string; width: number; length: number; color: string }[] = [
+  { type: "cheminee", label: "Cheminée", plural: "Cheminées", width: 0.6, length: 0.6, color: "#7c2d12" },
+  { type: "chassis", label: "Fenêtre de toit", plural: "Fenêtres de toit", width: 0.78, length: 0.98, color: "#0369a1" },
+  { type: "lucarne", label: "Lucarne", plural: "Lucarnes", width: 1.4, length: 1.6, color: "#6d28d9" },
+];
+export const ELEMENT_LABEL: Record<ElementType, string> = Object.fromEntries(ELEMENT_TYPES.map((e) => [e.type, e.label])) as Record<
+  ElementType,
+  string
+>;
+
+export interface RoofElement {
+  id: string;
+  type: ElementType;
+  /** centre (lon/lat) */
+  center: LonLat;
+  /** largeur, parallèle à l'égout (m) */
+  width: number;
+  /** longueur dans le sens de la pente, en vraie grandeur (m) */
+  length: number;
+  /** détecté automatiquement (à vérifier) */
+  auto?: boolean;
+}
+
+export interface ElementMetrics {
+  id: string;
+  index: number;
+  type: ElementType;
+  label: string;
+  faceId: string | null;
+  ring: LonLat[]; // emprise au sol (haut-gauche, haut-droit, bas-droit, bas-gauche ; « haut » = côté amont)
+  width: number;
+  length: number;
+  lines: { key: string; label: string; length: number }[];
+}
+
 export interface RoofModel {
   version: 1;
   origin: LonLat;
   faces: RoofFace[];
+  elements?: RoofElement[];
   edgeOverrides: Record<string, EdgeType>;
   /** emprise du bâtiment (cadastre / BD TOPO) pour affichage */
   footprint?: LonLat[] | null;
@@ -96,6 +136,9 @@ export interface EdgeMetrics {
 export interface RoofMetrics {
   faces: FaceMetrics[];
   edges: EdgeMetrics[];
+  elements: ElementMetrics[];
+  /** linéaires de raccords (solins, abergements), cumulés par libellé */
+  flashing: { key: string; label: string; length: number }[];
   totals: {
     area: number;
     area2D: number;
@@ -320,9 +363,24 @@ export function computeMetrics(model: RoofModel): RoofMetrics {
   const area2D = faceMetrics.reduce((s, f) => s + f.area2D, 0);
   const meanPitch = area2D > 0 ? faceMetrics.reduce((s, f) => s + f.pitchDeg * f.area2D, 0) / area2D : 0;
 
+  // éléments de toiture
+  const elements: ElementMetrics[] = [];
+  const flashMap = new Map<string, { key: string; label: string; length: number }>();
+  (model.elements ?? []).forEach((el, i) => {
+    const em = elementGeometry(el, faces, frame, i + 1);
+    elements.push(em);
+    for (const l of em.lines) {
+      const f = flashMap.get(l.key);
+      if (f) f.length += l.length;
+      else flashMap.set(l.key, { ...l });
+    }
+  });
+
   return {
     faces: faceMetrics,
     edges,
+    elements,
+    flashing: [...flashMap.values()],
     totals: {
       area,
       area2D,
@@ -333,6 +391,55 @@ export function computeMetrics(model: RoofModel): RoofMetrics {
       perimeter,
     },
   };
+}
+
+/** pan qui contient un point (local), le plus petit s'il y en a plusieurs */
+export function faceAt(faces: RoofFace[], frame: LocalFrame, p: XY): RoofFace | null {
+  let best: RoofFace | null = null;
+  let bestA = Infinity;
+  for (const f of faces) {
+    const ring = f.ring.map((q) => toLocal(frame, q));
+    if (!pointInPolygon(p, ring)) continue;
+    const a = Math.abs(polygonArea(ring));
+    if (a < bestA) {
+      bestA = a;
+      best = f;
+    }
+  }
+  return best;
+}
+
+export function elementGeometry(el: RoofElement, faces: RoofFace[], frame: LocalFrame, index: number): ElementMetrics {
+  const c = toLocal(frame, el.center);
+  const face = faceAt(faces, frame, c);
+  const az = face?.azimuthDeg ?? 180;
+  const pitch = face?.pitchDeg ?? 0;
+  const dn = downVector(az); // vers l'aval
+  const ac: XY = [-dn[1], dn[0]]; // le long de l'égout
+  const hw = el.width / 2;
+  const hl = (el.length * Math.cos(pitch * D2R)) / 2;
+  const P = (sa: number, sd: number): LonLat => toLonLat(frame, [c[0] + ac[0] * hw * sa + dn[0] * hl * sd, c[1] + ac[1] * hw * sa + dn[1] * hl * sd]);
+  const ring = [P(-1, -1), P(1, -1), P(1, 1), P(-1, 1)];
+  const W = el.width;
+  const L = el.length;
+  let lines: ElementMetrics["lines"];
+  if (el.type === "cheminee") {
+    lines = [
+      { key: "chem_amont", label: "Solin arrière de cheminée (amont)", length: W },
+      { key: "chem_cotes", label: "Solins à gradins de cheminée (côtés)", length: 2 * L },
+      { key: "chem_base", label: "Solin de base de cheminée (aval)", length: W },
+      { key: "chem_contre", label: "Contre-solin de cheminée (périmètre)", length: 2 * (W + L) },
+    ];
+  } else if (el.type === "chassis") {
+    lines = [{ key: "chassis_aberg", label: "Abergement de fenêtre de toit (périmètre)", length: 2 * (W + L) }];
+  } else {
+    lines = [
+      { key: "luc_facade", label: "Lucarne : façade (largeur)", length: W },
+      { key: "luc_joues", label: "Lucarne : raccords des joues (côtés)", length: 2 * L },
+      { key: "luc_amont", label: "Lucarne : raccord amont", length: W },
+    ];
+  }
+  return { id: el.id, index, type: el.type, label: ELEMENT_LABEL[el.type], faceId: face?.id ?? null, ring, width: W, length: L, lines };
 }
 
 export function emptyModel(origin: LonLat): RoofModel {

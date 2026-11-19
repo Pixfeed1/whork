@@ -7,13 +7,16 @@ import {
   computeMetrics,
   EDGE_TYPES,
   EDGE_LABEL,
+  ELEMENT_TYPES,
+  type ElementType,
   orientationLabel,
   pitchPercent,
   vertexKey,
 } from "../../../shared/roof";
-import { addFace, deleteFace, deleteVertex, setEdgeType, splitFace, updateFace } from "../../../shared/edit";
+import { addFace, deleteFace, deleteVertex, setEdgeType, splitFace, updateFace, addElement, updateElement, deleteElement } from "../../../shared/edit";
 import { api, fmtDateTime, type Report, type Study } from "../api";
 import { RoofEditor, type Selection, type Tool } from "../components/RoofEditor";
+import { View3D } from "../components/View3D";
 import { FACE_COLORS } from "../components/mapStyle";
 import { ReportTable } from "./Reports";
 import { useAuth } from "../App";
@@ -31,6 +34,7 @@ export function StudyPage() {
   const [future, setFuture] = useState<RoofModel[]>([]);
   const [sel, setSel] = useState<Selection>(null);
   const [tool, setTool] = useState<Tool>("select");
+  const [eltType, setEltType] = useState<ElementType>("cheminee");
   const [labels, setLabels] = useState(true);
   const [basemap, setBasemap] = useState<"ortho" | "plan">("ortho");
   const [hl, setHl] = useState<string | null>(null);
@@ -142,11 +146,14 @@ export function StudyPage() {
   const selFace = sel?.kind === "face" ? model.faces.find((f) => f.id === sel.id) : null;
   const selFaceM = selFace ? metrics.faces.find((f) => f.id === selFace.id) : null;
   const selEdge = sel?.kind === "edge" ? metrics.edges.find((e) => e.key === sel.key) : null;
+  const selElt = sel?.kind === "element" ? model.elements?.find((e) => e.id === sel.id) : null;
+  const selEltM = selElt ? metrics.elements.find((e) => e.id === selElt.id) : null;
   const meta = (model.meta ?? {}) as any;
 
   function removeSelection() {
     if (!model || !sel) return;
     if (sel.kind === "face") commit(deleteFace(model, sel.id));
+    else if (sel.kind === "element") commit(deleteElement(model, sel.id));
     else if (sel.kind === "vertex") commit(deleteVertex(model, sel.ll));
     else if (sel.kind === "edge") commit(setEdgeType(model, sel.key, null));
     setSel(null);
@@ -251,6 +258,7 @@ export function StudyPage() {
               ["draw", "✎", "Dessiner un pan"],
               ["insert", "＋", "Ajouter un sommet"],
               ["split", "✂", "Découper un pan"],
+              ["element", "▣", "Cheminée / fenêtre"],
             ] as [Tool, string, string][]
           ).map(([k, icon, label]) => (
             <button key={k} className={`tool ${tool === k ? "active" : ""}`} onClick={() => setTool(k)} title={label}>
@@ -258,6 +266,15 @@ export function StudyPage() {
               <span className="tool-label">{label}</span>
             </button>
           ))}
+          {tool === "element" && (
+            <select className="tool" value={eltType} onChange={(e) => setEltType(e.target.value as ElementType)} aria-label="Type d'élément">
+              {ELEMENT_TYPES.map((x) => (
+                <option key={x.type} value={x.type}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          )}
           <span className="sep" />
           <button className="tool" onClick={undo} disabled={!past.length} title="Annuler (Ctrl+Z)">
             <span className="tool-icon">↶</span>
@@ -284,6 +301,12 @@ export function StudyPage() {
           onModel={commit}
           onAddFace={onAddFace}
           onSplit={onSplit}
+          onAddElement={(ll) => {
+            const r = addElement(model, eltType, ll);
+            commit(r.model);
+            setTool("select");
+            setSel({ kind: "element", id: r.id });
+          }}
           showLabels={labels}
           highlightType={hl}
           basemap={basemap}
@@ -435,6 +458,65 @@ export function StudyPage() {
             </label>
           </div>
         )}
+        {selElt && selEltM && (
+          <div className="card sel-card">
+            <div className="row between">
+              <h3>
+                <span className="dot" style={{ background: ELEMENT_TYPES.find((x) => x.type === selElt.type)!.color }} /> {selEltM.label} {selEltM.index}
+              </h3>
+              <button className="btn-link" onClick={() => setSel(null)}>
+                Fermer
+              </button>
+            </div>
+            {selElt.auto && <div className="alert alert-warn small">Détectée automatiquement : vérifiez sa présence et ses dimensions.</div>}
+            <div className="form-grid tight">
+              <label className="span2">
+                Type
+                <select value={selElt.type} onChange={(e) => commit(updateElement(model, selElt.id, { type: e.target.value as ElementType }))}>
+                  {ELEMENT_TYPES.map((x) => (
+                    <option key={x.type} value={x.type}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Largeur (m)
+                <input
+                  type="number"
+                  min={0.1}
+                  max={30}
+                  step={0.05}
+                  value={selElt.width}
+                  onChange={(e) => commit(updateElement(model, selElt.id, { width: Math.max(0.1, Math.min(30, Number(e.target.value) || 0.1)) }))}
+                />
+              </label>
+              <label>
+                Longueur dans la pente (m)
+                <input
+                  type="number"
+                  min={0.1}
+                  max={30}
+                  step={0.05}
+                  value={selElt.length}
+                  onChange={(e) => commit(updateElement(model, selElt.id, { length: Math.max(0.1, Math.min(30, Number(e.target.value) || 0.1)) }))}
+                />
+              </label>
+            </div>
+            <ul className="mini-list">
+              {selEltM.lines.map((l) => (
+                <li key={l.key}>
+                  <span>{l.label}</span>
+                  <b>{nf(l.length)} ml</b>
+                </li>
+              ))}
+            </ul>
+            <p className="small muted">Glissez l'élément sur la carte pour le déplacer : il s'oriente selon la pente du pan.</p>
+            <button className="btn btn-sm btn-danger-ghost" onClick={removeSelection}>
+              Supprimer
+            </button>
+          </div>
+        )}
         {sel?.kind === "vertex" && (
           <div className="card sel-card">
             <div className="row between">
@@ -503,6 +585,27 @@ export function StudyPage() {
                 </li>
               ))}
             </ul>
+            {metrics.elements.length > 0 && (
+              <>
+                <h3>Éléments et raccords</h3>
+                <ul className="lin-list">
+                  {ELEMENT_TYPES.filter((x) => metrics.elements.some((e) => e.type === x.type)).map((x) => (
+                    <li key={x.type} className="static">
+                      <span className="swatch" style={{ background: x.color, height: 10, width: 10, borderRadius: 2 }} />
+                      <span>{x.plural}</span>
+                      <b>{metrics.elements.filter((e) => e.type === x.type).length}</b>
+                    </li>
+                  ))}
+                  {metrics.flashing.map((f) => (
+                    <li key={f.key} className="static sub">
+                      <span />
+                      <span>{f.label}</span>
+                      <b>{nf(f.length)} ml</b>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <h3>Pans</h3>
             {model.faces.length === 0 ? (
               <p className="muted small">Aucun pan. Utilisez l'outil « Dessiner un pan ».</p>
@@ -539,6 +642,7 @@ export function StudyPage() {
           </>
         )}
 
+        {tab === "infos" && <View3D model={model} />}
         {tab === "infos" && (
           <StudyInfo
             study={study}

@@ -97,4 +97,26 @@ describe("opérations d'édition", () => {
   it("supprimer un pan", () => {
     expect(deleteFace(gable(), "N").faces.length).toBe(1);
   });
+
+  it("éléments de toiture : solins de cheminée et abergement de fenêtre de toit", async () => {
+    const { addElement, updateElement, deleteElement } = await import("../shared/edit");
+    let g = gable();
+    const a = addElement(g, "cheminee", ll([2, -2]));
+    g = updateElement(a.model, a.id, { width: 0.8, length: 1.0 });
+    g = addElement(g, "chassis", ll([-2, 2])).model;
+    const met = computeMetrics(g);
+    expect(met.elements.length).toBe(2);
+    expect(met.elements[0].faceId).toBe("S");
+    const fl = Object.fromEntries(met.flashing.map((f) => [f.key, f.length]));
+    expect(fl.chem_amont).toBeCloseTo(0.8, 5);
+    expect(fl.chem_cotes).toBeCloseTo(2.0, 5);
+    expect(fl.chem_contre).toBeCloseTo(3.6, 5);
+    expect(fl.chassis_aberg).toBeCloseTo(2 * (0.78 + 0.98), 5);
+    // emprise orientée selon la pente (pan sud : le haut de la cheminée est au nord)
+    const top = met.elements[0].ring[0];
+    const bottom = met.elements[0].ring[3];
+    expect(top[1]).toBeGreaterThan(bottom[1]);
+    expect(deleteElement(g, a.id).elements!.length).toBe(1);
+  });
 });
+

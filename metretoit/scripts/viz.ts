@@ -18,6 +18,7 @@ let svg = "";
 if (m.footprint) svg += `<polygon points="${m.footprint.map((p: any) => px(p).join(",")).join(" ")}" fill="none" stroke="yellow" stroke-dasharray="4" stroke-width="1"/>`;
 for (const f of m.faces) svg += `<polygon points="${f.ring.map((p: any) => px(p).join(",")).join(" ")}" fill="rgba(255,255,255,0.12)" stroke="none"/>`;
 for (const e of met.edges) { const a = px(e.a), b = px(e.b); svg += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${EDGE_COLOR[e.type]}" stroke-width="3"/>`; svg += `<text x="${(a[0]+b[0])/2}" y="${(a[1]+b[1])/2}" fill="white" font-size="12" stroke="black" stroke-width="0.4">${e.length.toFixed(1)}</text>`; }
+for (const e of met.elements) svg += `<polygon points="${e.ring.map((p: any) => px(p).join(",")).join(" ")}" fill="rgba(255,0,0,0.35)" stroke="red" stroke-width="2"/>`;
 for (const f of met.faces) { const c = px(f.centroid); svg += `<text x="${c[0]}" y="${c[1]}" fill="yellow" font-size="13" font-weight="bold" stroke="black" stroke-width="0.5">${f.index}: ${f.area.toFixed(1)}m² ${f.pitchDeg.toFixed(0)}°</text>`; }
 const html = `<html><body style="margin:0"><div style="position:relative;width:${W}px;height:${H}px"><img src="data:image/jpeg;base64,${img.toString("base64")}" style="position:absolute"/><svg width="${W}" height="${H}" style="position:absolute">${svg}</svg></div></body></html>`;
 const br = await chromium.launch(); const pg = await br.newPage({ viewport: { width: W, height: H } });

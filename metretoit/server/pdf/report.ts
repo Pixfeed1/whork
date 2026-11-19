@@ -8,11 +8,13 @@ import {
   EDGE_TYPES,
   EDGE_COLOR,
   EDGE_LABEL,
+  ELEMENT_TYPES,
   computeMetrics,
   downVector,
   orientationLabel,
 } from "../../shared/roof";
 import { ignOrtho, toL93 } from "../providers/ign";
+import { roofView, fitPolys, VIEW_BEARINGS } from "../../shared/view3d";
 import { createRequire } from "node:module";
 
 // Police Montserrat (repli sur Helvetica si indisponible)
@@ -158,6 +160,14 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     doc.font(fontsInUse.bold).text(`${nf(t.lengths[e.type])} ml`, x + colW - 110, yy, { width: 90, align: "right" });
   });
   y += Math.ceil(lin.length / 2) * 18 + 8;
+  if (metrics.elements.length) {
+    const parts = ELEMENT_TYPES.filter((x) => metrics.elements.some((e) => e.type === x.type)).map(
+      (x) => `${x.plural} : ${metrics.elements.filter((e) => e.type === x.type).length}`,
+    );
+    const fl = metrics.flashing.reduce((a, f) => a + (f.key.endsWith("contre") ? 0 : f.length), 0);
+    doc.fillColor("#111").font(fontsInUse.reg).fontSize(9.5).text(`${parts.join("  ·  ")}  ·  raccords et solins : ${nf(fl)} ml (détail en page des tableaux)`, M, y, { width: A4.w - 2 * M });
+    y = doc.y + 8;
+  }
   const warn = (input.model.meta?.warnings as string[] | undefined) ?? [];
   const src = sourceText(input.model);
   doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7.5).text(src, M, Math.min(y, A4.h - 95), { width: A4.w - 2 * M });
@@ -181,6 +191,34 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     A4.h - 115,
     { width: A4.w - 2 * M },
   );
+
+  // ---------- page : vues 3D ----------
+  doc.addPage();
+  header(doc, input);
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(14).text("Vues 3D de la toiture", M, 140);
+  {
+    const gw = (A4.w - 2 * M - 14) / 2;
+    const gh = 245;
+    VIEW_BEARINGS.forEach((vb, i) => {
+      const bx = M + (i % 2) * (gw + 14);
+      const by = 170 + Math.floor(i / 2) * (gh + 16);
+      doc.roundedRect(bx, by, gw, gh, 8).fillColor("#f4f7fa").fill();
+      doc.roundedRect(bx, by, gw, 22, 8).fillColor("#e3ebf2").fill();
+      doc.rect(bx, by + 14, gw, 8).fillColor("#e3ebf2").fill();
+      doc.fillColor(INK).font(fontsInUse.bold).fontSize(9).text(`Vue depuis le ${vb.label.toLowerCase()}`, bx, by + 7, { width: gw, align: "center" });
+      const polys = fitPolys(roofView(input.model, vb.bearing), { x: bx, y: by + 26, w: gw, h: gh - 30 }, 16);
+      for (const p of polys) {
+        doc.polygon(...p.pts).fillColor(cssColor(p.fill)).fill();
+        doc.polygon(...p.pts).lineWidth(p.kind === "face" ? 0.7 : 0.4).lineJoin("round").strokeColor(p.stroke).stroke();
+      }
+    });
+    doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(8).text(
+      "Représentation schématique établie à partir des pentes et des hauteurs mesurées. Les éléments (cheminées, fenêtres de toit) sont figurés en couleur.",
+      M,
+      170 + 2 * (gh + 16),
+      { width: A4.w - 2 * M },
+    );
+  }
 
   // ---------- page 4 : tableaux ----------
   doc.addPage();
@@ -225,6 +263,69 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
     ["Périmètre (au sol)", nf(t.perimeter), "", ""],
   );
   y += 18;
+  // éléments de toiture et raccords
+  if (metrics.elements.length) {
+    if (y > A4.h - 200) {
+      doc.addPage();
+      header(doc, input);
+      y = 140;
+    }
+    doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12).text("Éléments de toiture et raccords", M, y);
+    y += 20;
+    const faceIdx = new Map(metrics.faces.map((f) => [f.id, f.index]));
+    y = table(
+      doc,
+      y,
+      ["Repère", "Élément", "Largeur (m)", "Longueur (m)", "Pan", "Raccords (ml)"],
+      [55, 120, 75, 85, 50, 130],
+      metrics.elements.map((e) => [
+        `${e.type === "cheminee" ? "C" : e.type === "chassis" ? "F" : "L"}${e.index}`,
+        e.label + (input.model.elements?.find((x) => x.id === e.id)?.auto ? " (auto)" : ""),
+        nf(e.width),
+        nf(e.length),
+        e.faceId ? String(faceIdx.get(e.faceId) ?? "") : "",
+        nf(e.lines.filter((l) => !l.key.endsWith("contre")).reduce((a, l) => a + l.length, 0)),
+      ]),
+      null,
+      () => {
+        doc.addPage();
+        header(doc, input);
+        return 140;
+      },
+    );
+    y += 10;
+    y = table(
+      doc,
+      y,
+      ["Raccord / solin", "Longueur (ml)"],
+      [385, 130],
+      metrics.flashing.map((f) => [f.label, nf(f.length)]),
+      null,
+    );
+    y += 18;
+  }
+  // tableau des chutes : surface à commander selon le taux de perte
+  if (y > A4.h - 150) {
+    doc.addPage();
+    header(doc, input);
+    y = 140;
+  }
+  doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(12).text("Surface à commander selon le taux de chutes", M, y);
+  y += 20;
+  const rates = wasteRates(waste);
+  const cw = (A4.w - 2 * M - 90) / rates.length;
+  y = table(
+    doc,
+    y,
+    ["Chutes", ...rates.map((r) => `${nf(r, 0)} %`)],
+    [90, ...rates.map(() => cw)],
+    [["Surface (m²)", ...rates.map((r) => nf(t.area * (1 + r / 100)))]],
+    null,
+    undefined,
+    rates.indexOf(waste) + 1,
+  );
+  doc.fillColor(MUTED).font(fontsInUse.reg).fontSize(7.5).text(`Colonne surlignée : taux retenu par l'entreprise (${nf(waste, 0)} %). Taux indicatifs, à adapter au matériau et à la complexité de la toiture.`, M, y + 4, { width: A4.w - 2 * M });
+  y = doc.y + 14;
   if (input.notes) {
     if (y > A4.h - 160) {
       doc.addPage();
@@ -287,13 +388,25 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
   return done;
 }
 
+/** « rgb(r,g,b) » ou « #rrggbb » vers une couleur pdfkit */
+function cssColor(c: string): string | [number, number, number] {
+  const m = /^rgb\((\d+),(\d+),(\d+)\)$/.exec(c.replace(/\s/g, ""));
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : c;
+}
+
+/** taux de chutes présentés : série standard + taux de l'entreprise */
+export function wasteRates(own: number): number[] {
+  const base = [0, 5, 8, 10, 12, 15, 20];
+  const r = base.includes(own) ? base : [...base, own].sort((a, b) => a - b);
+  return r;
+}
+
 function sourceText(model: RoofModel): string {
   const m = model.meta ?? {};
   const parts: string[] = [];
   if (m.dsmSource) parts.push(`Relevé 3D : ${m.dsmSource}`);
   if (m.imageryDate) parts.push(`date des images : ${m.imageryDate}`);
   parts.push("Orthophotographie : IGN (Géoplateforme)");
-  if ((m.diagnostics as any)?.confidence) parts.push(`indice de confiance de la détection automatique : ${(m.diagnostics as any).confidence}`);
   if ((m.google as any)?.wholeRoofArea)
     parts.push(`contrôle Google Solar API : ${nf((m.google as any).wholeRoofArea)} m² sur ${(m.google as any).segmentCount} segments`);
   if (model.faces.some((f) => f.source === "manual")) parts.push("pans corrigés ou dessinés manuellement");
@@ -428,6 +541,7 @@ async function drawAerial(doc: PDFKit.PDFDocument, model: RoofModel, metrics: Ro
     const b = f(e.b);
     doc.moveTo(a[0], a[1]).lineTo(b[0], b[1]).strokeColor(EDGE_COLOR[e.type]).lineWidth(2.2).stroke();
   }
+  drawElements(doc, metrics, f, true);
   // cotes de chaque arête directement sur la photo
   drawEdgeLabels(doc, metrics, f, Math.max(5.5, Math.min(7.5, (box.w / (x1 - x0)) * 0.42)), 16);
   for (const fm of metrics.faces) {
@@ -467,6 +581,7 @@ function drawPlan(
     const b = P(e.b);
     doc.moveTo(a[0], a[1]).lineTo(b[0], b[1]).strokeColor(EDGE_COLOR[e.type]).lineWidth(mode === "lengths" ? 2 : 1.2).stroke();
   }
+  drawElements(doc, metrics, P, false);
   if (mode === "lengths") {
     drawEdgeLabels(doc, metrics, P, Math.max(6, Math.min(9, s * 0.45)), 14);
   } else {
@@ -499,6 +614,23 @@ function drawPlan(
   scaleBar(doc, box.x + 4, box.y + box.h - 16, s);
   northArrow(doc, box.x + box.w - 16, box.y + 4);
   doc.restore();
+}
+
+/** Cheminées, fenêtres de toit, lucarnes (emprise + numéro) */
+function drawElements(doc: PDFKit.PDFDocument, metrics: RoofMetrics, P: (p: LonLat) => XY, onPhoto: boolean) {
+  for (const el of metrics.elements) {
+    const color = ELEMENT_TYPES.find((x) => x.type === el.type)!.color;
+    const r = el.ring.map(P);
+    doc.polygon(...r).fillColor(color).fillOpacity(onPhoto ? 0.75 : 0.85).fill();
+    doc.fillOpacity(1).polygon(...r).lineWidth(0.8).strokeColor("#ffffff").stroke();
+    const cx = r.reduce((a, p) => a + p[0], 0) / r.length;
+    const cy = r.reduce((a, p) => a + p[1], 0) / r.length;
+    const tag = `${el.type === "cheminee" ? "C" : el.type === "chassis" ? "F" : "L"}${el.index}`;
+    doc.font(fontsInUse.bold).fontSize(6.5);
+    const tw = doc.widthOfString(tag);
+    doc.roundedRect(cx + 5, cy - 11, tw + 5, 9, 2).fillColor("#ffffff").fill();
+    doc.fillColor(color).text(tag, cx + 7.5, cy - 9.5, { lineBreak: false });
+  }
 }
 
 /** Étiquette de longueur au milieu de chaque arête, dans l'axe de l'arête. */
@@ -538,11 +670,16 @@ function table(
   rows: string[][],
   foot: string[] | null,
   newPage?: () => number,
+  highlightCol = -1,
 ): number {
   const rowH = 17;
   const drawRow = (cells: string[], yy: number, opts: { bold?: boolean; fill?: string; color?: string }) => {
     let x = M;
     if (opts.fill) doc.rect(M, yy, widths.reduce((a, b) => a + b, 0), rowH).fillColor(opts.fill).fill();
+    if (highlightCol > 0 && !opts.color) {
+      const hx = M + widths.slice(0, highlightCol).reduce((a, b) => a + b, 0);
+      doc.rect(hx, yy, widths[highlightCol], rowH).fillColor("#d6eef6").fill();
+    }
     doc.font(opts.bold ? fontsInUse.bold : fontsInUse.reg).fontSize(8.5).fillColor(opts.color ?? "#111");
     cells.forEach((c, i) => {
       doc.text(c, x + 5, yy + 4.5, { width: widths[i] - 10, lineBreak: false, ellipsis: true });

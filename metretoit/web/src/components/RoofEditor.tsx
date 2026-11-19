@@ -2,12 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "./maplibreSetup";
 import type { LonLat } from "../../../shared/geo";
-import { type RoofModel, type RoofMetrics, EDGE_COLOR, vertexKey } from "../../../shared/roof";
-import { moveVertex, insertVertex, uniqueVertices } from "../../../shared/edit";
+import { type RoofModel, type RoofMetrics, EDGE_COLOR, ELEMENT_TYPES, vertexKey, computeMetrics } from "../../../shared/roof";
+import { moveVertex, insertVertex, uniqueVertices, updateElement } from "../../../shared/edit";
 import { baseStyle, FACE_COLORS } from "./mapStyle";
 
-export type Tool = "select" | "draw" | "insert" | "split";
-export type Selection = { kind: "face"; id: string } | { kind: "edge"; key: string } | { kind: "vertex"; ll: LonLat } | null;
+export type Tool = "select" | "draw" | "insert" | "split" | "element";
+export type Selection =
+  | { kind: "face"; id: string }
+  | { kind: "edge"; key: string }
+  | { kind: "vertex"; ll: LonLat }
+  | { kind: "element"; id: string }
+  | null;
 
 interface Props {
   model: RoofModel;
@@ -18,6 +23,7 @@ interface Props {
   onModel: (m: RoofModel) => void;
   onAddFace: (ring: LonLat[]) => void;
   onSplit: (a: LonLat, b: LonLat) => void;
+  onAddElement: (ll: LonLat) => void;
   showLabels: boolean;
   highlightType: string | null;
   basemap: "ortho" | "plan";
@@ -36,6 +42,7 @@ export function RoofEditor(p: Props) {
   const draft = useRef<LonLat[]>([]);
   const splitA = useRef<LonLat | null>(null);
   const drag = useRef<{ from: LonLat; to: LonLat } | null>(null);
+  const eltDrag = useRef<{ id: string; start: LonLat; center: LonLat; to: LonLat } | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const [hint, setHint] = useState("");
 
@@ -56,7 +63,7 @@ export function RoofEditor(p: Props) {
     m.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     m.on("load", () => {
       const add = (id: string) => m.addSource(id, { type: "geojson", data: EMPTY });
-      ["faces", "edges", "verts", "draft", "foot"].forEach(add);
+      ["faces", "edges", "verts", "draft", "foot", "elts"].forEach(add);
       m.addLayer({ id: "foot", type: "line", source: "foot", paint: { "line-color": "#facc15", "line-width": 1.2, "line-dasharray": [3, 2] } });
       m.addLayer({
         id: "faces-fill",
@@ -83,6 +90,18 @@ export function RoofEditor(p: Props) {
         },
       });
       m.addLayer({ id: "edges-hit", type: "line", source: "edges", paint: { "line-color": "#000", "line-width": 16, "line-opacity": 0.001 } });
+      m.addLayer({
+        id: "elts-fill",
+        type: "fill",
+        source: "elts",
+        paint: { "fill-color": ["get", "color"], "fill-opacity": ["case", ["get", "sel"], 0.85, 0.6] },
+      });
+      m.addLayer({
+        id: "elts-line",
+        type: "line",
+        source: "elts",
+        paint: { "line-color": ["case", ["get", "auto"], "#fde047", "#ffffff"], "line-width": ["case", ["get", "sel"], 3, 1.8] },
+      });
       m.addLayer({
         id: "verts",
         type: "circle",
@@ -171,6 +190,20 @@ export function RoofEditor(p: Props) {
           }))
         : [],
     });
+    const ecol = Object.fromEntries(ELEMENT_TYPES.map((e) => [e.type, e.color]));
+    src("elts").setData({
+      type: "FeatureCollection",
+      features: (metrics ? met : computeMetrics(model)).elements.map((el) => ({
+        type: "Feature",
+        properties: {
+          id: el.id,
+          color: ecol[el.type],
+          sel: selection?.kind === "element" && selection.id === el.id,
+          auto: !!model.elements?.find((x) => x.id === el.id)?.auto,
+        },
+        geometry: { type: "Polygon", coordinates: [[...el.ring, el.ring[0]]] },
+      })),
+    });
     src("foot").setData(
       model.footprint
         ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [...model.footprint, model.footprint[0]] } }
@@ -241,6 +274,8 @@ export function RoofEditor(p: Props) {
           ? "Cliquez sur une arête pour y ajouter un sommet."
           : p.tool === "split"
             ? "Cliquez deux sommets d'un même pan pour le découper."
+            : p.tool === "element"
+              ? "Cliquez sur le toit pour placer l'élément. Ses dimensions se règlent ensuite dans le panneau."
             : "Cliquez un pan, une arête ou un sommet. Glissez un sommet pour le déplacer.",
     );
   }, [p.tool]);
@@ -298,7 +333,7 @@ export function RoofEditor(p: Props) {
 
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const { tool, onSelect, onModel, model } = props.current;
-      if (drag.current) return;
+      if (drag.current || eltDrag.current) return;
       if (tool === "draw") {
         const s = snap(e.point);
         const d = draft.current;
@@ -331,6 +366,10 @@ export function RoofEditor(p: Props) {
         }
         return;
       }
+      if (tool === "element") {
+        props.current.onAddElement([e.lngLat.lng, e.lngLat.lat]);
+        return;
+      }
       if (tool === "insert") {
         const s = snap(e.point);
         if (s.kind === "edge" && s.edge) onModel(insertVertex(model, s.edge[0], s.edge[1], s.ll));
@@ -338,6 +377,8 @@ export function RoofEditor(p: Props) {
       }
       // sélection
       if (vf) return onSelect({ kind: "vertex", ll: (vf.geometry as GeoJSON.Point).coordinates as LonLat });
+      const elf = m.queryRenderedFeatures(e.point, { layers: ["elts-fill"] })[0];
+      if (elf) return onSelect({ kind: "element", id: elf.properties!.id });
       const ef = m.queryRenderedFeatures(e.point, { layers: ["edges-hit"] })[0];
       if (ef) return onSelect({ kind: "edge", key: ef.properties!.key });
       const ff = m.queryRenderedFeatures(e.point, { layers: ["faces-fill"] })[0];
@@ -354,6 +395,13 @@ export function RoofEditor(p: Props) {
 
     const onMove = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
       const { tool, model } = props.current;
+      if (eltDrag.current) {
+        const d = eltDrag.current;
+        const ll: LonLat = [e.lngLat.lng, e.lngLat.lat];
+        d.to = [d.center[0] + ll[0] - d.start[0], d.center[1] + ll[1] - d.start[1]];
+        render(updateElement(model, d.id, { center: d.to }), null);
+        return;
+      }
       if (drag.current) {
         const s = snap(e.point, vertexKey(drag.current.from));
         drag.current.to = s.ll;
@@ -362,7 +410,7 @@ export function RoofEditor(p: Props) {
       }
       if (tool === "draw" && draft.current.length) renderDraft(snap(e.point).ll);
       if (tool === "select") {
-        const over = m.queryRenderedFeatures(e.point, { layers: ["verts"] }).length > 0;
+        const over = m.queryRenderedFeatures(e.point, { layers: ["verts", "elts-fill"] }).length > 0;
         m.getCanvas().style.cursor = over ? "move" : "";
       }
     };
@@ -377,7 +425,28 @@ export function RoofEditor(p: Props) {
       drag.current = { from: ll, to: ll };
       m.dragPan.disable();
     };
+    const startEltDrag = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
+      if (props.current.tool !== "select" || drag.current) return;
+      if (m.queryRenderedFeatures(e.point, { layers: ["verts"] }).length) return; // un sommet a la priorité
+      const f = e.features?.[0];
+      if (!f) return;
+      if ("touches" in e.originalEvent && (e.originalEvent as TouchEvent).touches.length > 1) return;
+      const el = props.current.model.elements?.find((x) => x.id === f.properties!.id);
+      if (!el) return;
+      e.preventDefault();
+      const ll: LonLat = [e.lngLat.lng, e.lngLat.lat];
+      eltDrag.current = { id: el.id, start: ll, center: el.center, to: el.center };
+      m.dragPan.disable();
+    };
     const endDrag = () => {
+      const ed = eltDrag.current;
+      if (ed) {
+        m.dragPan.enable();
+        setTimeout(() => (eltDrag.current = null), 0);
+        if (ed.to[0] !== ed.center[0] || ed.to[1] !== ed.center[1]) props.current.onModel(updateElement(props.current.model, ed.id, { center: ed.to }));
+        props.current.onSelect({ kind: "element", id: ed.id });
+        return;
+      }
       const d = drag.current;
       if (!d) return;
       m.dragPan.enable();
@@ -416,6 +485,8 @@ export function RoofEditor(p: Props) {
     m.on("touchmove", onMove);
     m.on("mousedown", "verts", startDrag);
     m.on("touchstart", "verts", startDrag);
+    m.on("mousedown", "elts-fill", startEltDrag);
+    m.on("touchstart", "elts-fill", startEltDrag);
     m.on("mouseup", endDrag);
     m.on("touchend", endDrag);
     window.addEventListener("keydown", onKey);
@@ -426,6 +497,8 @@ export function RoofEditor(p: Props) {
       m.off("touchmove", onMove);
       m.off("mousedown", "verts", startDrag);
       m.off("touchstart", "verts", startDrag);
+      m.off("mousedown", "elts-fill", startEltDrag);
+      m.off("touchstart", "elts-fill", startEltDrag);
       m.off("mouseup", endDrag);
       m.off("touchend", endDrag);
       window.removeEventListener("keydown", onKey);

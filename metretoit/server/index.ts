@@ -102,12 +102,20 @@ function sanitizeModel(m: any): RoofModel {
     if (typeof k === "string" && k.length < 200 && EDGE_SET.has(v as EdgeType)) edgeOverrides[k] = v as EdgeType;
   }
   const footprint = Array.isArray(m.footprint) && m.footprint.every(validLonLat) ? m.footprint.slice(0, 2000) : null;
+  const ELT = new Set(["cheminee", "chassis", "lucarne"]);
+  const elements = (Array.isArray(m.elements) ? m.elements : []).slice(0, 200).flatMap((e: any) => {
+    const w = num(e?.width);
+    const l = num(e?.length);
+    if (!e || !ELT.has(e.type) || !validLonLat(e.center) || !(w > 0 && w <= 30) || !(l > 0 && l <= 30)) return [];
+    return [{ id: str(e.id, 60) || uid(), type: e.type, center: [e.center[0], e.center[1]], width: w, length: l, auto: !!e.auto }];
+  });
   return {
     version: 1,
     origin: [m.origin[0], m.origin[1]],
     faces,
     edgeOverrides,
     footprint,
+    elements,
     meta: m.meta && typeof m.meta === "object" ? JSON.parse(JSON.stringify(m.meta).slice(0, 50000)) : {},
   };
 }

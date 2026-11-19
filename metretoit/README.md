@@ -6,8 +6,11 @@ toiture à partir d'un relevé 3D aérien et calcule automatiquement :
 - surface totale et surface de chaque pan (vraie grandeur, rampant), surface avec majoration pour chutes ;
 - pente de chaque pan (en degrés et en %) et orientation ;
 - linéaires : **faîtages, arêtiers, noues, égouts, rives, solins / rives hautes, changements de pente** ;
-- rapport **PDF** à l'en-tête de l'entreprise : vue aérienne annotée, plan coté des longueurs, plan des pans,
-  tableaux récapitulatifs, détail de chaque arête.
+- **cheminées** (détectées automatiquement, à vérifier), **fenêtres de toit** et **lucarnes** placées en un clic,
+  avec le calcul de leurs raccords : solins amont, à gradins, de base, contre-solin, abergements ;
+- rapport **PDF** à l'en-tête de l'entreprise : vue aérienne annotée et cotée, plan coté des longueurs, plan des
+  pans, **vues 3D sous 4 angles**, tableaux récapitulatifs, éléments et raccords, **surface à commander selon le
+  taux de chutes** (0 à 20 %), détail de chaque arête.
 
 Tout est corrigeable à la main : déplacer / ajouter / supprimer un sommet, dessiner ou découper un pan, modifier
 la pente ou l'orientation, forcer le type d'une arête, annuler / rétablir. Enregistrement automatique.

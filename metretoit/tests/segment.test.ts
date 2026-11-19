@@ -79,4 +79,30 @@ describe("extraction automatique sur toitures synthétiques", () => {
     expect(rel(L.egout, 40)).toBeLessThan(0.06);
     expect(rel(L.rive, (6 * 4) / Math.cos(40 * D2R))).toBeLessThan(0.1);
   });
+
+  it("cheminée détectée automatiquement sur un pan", () => {
+    const t = Math.tan(35 * D2R);
+    const fp: XY[] = [
+      [-6, -4],
+      [6, -4],
+      [6, 4],
+      [-6, 4],
+    ];
+    const zf = (x: number, y: number) => {
+      if (Math.abs(x) > 6.4 || Math.abs(y) > 4.4) return null;
+      const roof = 16 + t * (4.4 - Math.abs(y));
+      // souche de cheminée 1,0 x 1,0 m, 1,2 m au-dessus du toit
+      if (x > 1.5 && x < 2.5 && y > -2.5 && y < -1.5) return roof + 1.2;
+      return roof;
+    };
+    const { seg, metrics } = runSynthetic(zf, fp, [-16, -14, 16, 14], { overhang: 0.8 });
+    expect(seg.chimneys.length).toBe(1);
+    const c = seg.chimneys[0];
+    expect(Math.hypot(c.center[0] - 2, c.center[1] + 2)).toBeLessThan(0.5);
+    expect(c.width).toBeGreaterThan(0.6);
+    expect(c.width).toBeLessThan(1.6);
+    // la cheminée ne doit pas créer de pan parasite
+    expect(metrics.totals.faceCount).toBe(2);
+  });
 });
+

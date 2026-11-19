@@ -8,7 +8,7 @@ import {
   distToPolygonBoundary,
   centroid,
 } from "../../shared/geo";
-import { type RoofModel, type RoofFace, newId } from "../../shared/roof";
+import { type RoofModel, type RoofFace, type RoofElement, newId } from "../../shared/roof";
 import { ignBuildings, ignDsm, toL93, type Building } from "../providers/ign";
 import { googleKey, solarBuildingInsights, solarDsm, type SolarInsights } from "../providers/google";
 import { segmentRoof, planeAt, planeAngles } from "./segment";
@@ -139,6 +139,7 @@ export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
   ]);
 
   const faces: RoofFace[] = [];
+  const elements: RoofElement[] = [];
   let diagnostics: Record<string, unknown> = {};
   let shift: XY = [0, 0];
   if (!dsm) {
@@ -160,6 +161,8 @@ export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
         source: "auto",
       });
     }
+    for (const c of seg.chimneys)
+      elements.push({ id: newId("el"), type: "cheminee", center: toLonLat(frame, c.center), width: c.width, length: c.length, auto: true });
     if (!faces.length) warnings.push("Aucun pan détecté automatiquement : dessinez les pans manuellement.");
     const cov = (seg.diagnostics.coverage as number) ?? 0;
     const rms = seg.diagnostics.meanRms;
@@ -177,6 +180,7 @@ export async function analyzeRoof(input: AnalyzeInput): Promise<RoofModel> {
     version: 1,
     origin,
     faces,
+    elements,
     edgeOverrides: {},
     footprint,
     meta: {

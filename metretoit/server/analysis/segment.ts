@@ -45,8 +45,15 @@ export interface SegmentOptions {
   outlineFromFootprint?: boolean;
 }
 
+export interface DetectedChimney {
+  center: XY;
+  width: number;
+  length: number;
+}
+
 export interface SegmentResult {
   faces: SegFace[];
+  chimneys: DetectedChimney[];
   ground: number;
   shift: XY;
   diagnostics: {
@@ -252,6 +259,7 @@ export function segmentRoof(
   if (roofCells < 8) {
     return {
       faces: [],
+      chimneys: [],
       ground,
       shift,
       diagnostics: { roofCells, assignedCells: 0, meanRms: 0, coverage: 0, cell: grid.cell },
@@ -643,6 +651,89 @@ export function segmentRoof(
     }
   }
 
+  // --- cheminées : petits volumes nettement au-dessus du plan du pan ---
+  const chimneys: DetectedChimney[] = [];
+  {
+    const above = new Uint8Array(N);
+    for (let k = 0; k < N; k++) {
+      const f = faceLabel[k];
+      if (f < 0 || !Number.isFinite(z[k])) continue;
+      const r = z[k] - planeAt(facePlanes[f], P[k][0], P[k][1]);
+      if (r > 0.7 && r < 4) above[k] = 1;
+    }
+    const seen = new Uint8Array(N);
+    const minCells = Math.max(2, Math.round(0.2 / cellArea));
+    for (let k = 0; k < N; k++) {
+      if (!above[k] || seen[k]) continue;
+      const comp: number[] = [];
+      const st = [k];
+      seen[k] = 1;
+      while (st.length) {
+        const q = st.pop()!;
+        comp.push(q);
+        for (const nk of nb8(q))
+          if (above[nk] && !seen[nk]) {
+            seen[nk] = 1;
+            st.push(nk);
+          }
+      }
+      const area = comp.length * cellArea;
+      if (comp.length < minCells || area > 3.5) continue;
+      // orientation du pan majoritaire
+      const cnt = new Map<number, number>();
+      for (const q of comp) cnt.set(faceLabel[q], (cnt.get(faceLabel[q]) ?? 0) + 1);
+      const f = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      // une souche est entourée par son pan : on écarte ce qui touche une arête, un décroché ou le bord du toit
+      const inComp = new Set(comp);
+      let around = 0;
+      let same = 0;
+      for (const q of comp)
+        for (const nk of nb8(q)) {
+          if (inComp.has(nk)) continue;
+          around++;
+          if (faceLabel[nk] === f) same++;
+          // deux pixels plus loin, toujours sur le même pan
+          const GW = grid.w;
+          const qi = q % GW;
+          const ni = nk % GW;
+          const nj = (nk - ni) / GW;
+          const qj = (q - qi) / GW;
+          const fi = ni + (ni - qi);
+          const fj = nj + (nj - qj);
+          if (fi < 0 || fj < 0 || fi >= GW || fj >= grid.h || faceLabel[fj * GW + fi] !== f) same -= 0.5;
+        }
+      if (!around || same / around < 0.9) continue;
+      const { pitchDeg, azimuthDeg } = planeAngles(facePlanes[f]);
+      const dn: XY = [Math.sin((azimuthDeg * Math.PI) / 180), Math.cos((azimuthDeg * Math.PI) / 180)];
+      const ac: XY = [-dn[1], dn[0]];
+      let cx = 0;
+      let cy = 0;
+      for (const q of comp) {
+        cx += P[q][0] / comp.length;
+        cy += P[q][1] / comp.length;
+      }
+      let a0 = Infinity, a1 = -Infinity, d0 = Infinity, d1 = -Infinity;
+      for (const q of comp) {
+        const dx = P[q][0] - cx;
+        const dy = P[q][1] - cy;
+        const a = dx * ac[0] + dy * ac[1];
+        const d = dx * dn[0] + dy * dn[1];
+        a0 = Math.min(a0, a); a1 = Math.max(a1, a); d0 = Math.min(d0, d); d1 = Math.max(d1, d);
+      }
+      const w = a1 - a0 + grid.cell * 0.5;
+      const lPlan = d1 - d0 + grid.cell * 0.5;
+      if (w > 2.2 || lPlan > 2.2) continue; // trop grand : arbre, lucarne, édicule
+      if (area / (w * lPlan) < 0.45) continue; // forme peu compacte : végétation
+      const ccx = cx + ac[0] * (a0 + a1) / 2 + dn[0] * (d0 + d1) / 2;
+      const ccy = cy + ac[1] * (a0 + a1) / 2 + dn[1] * (d0 + d1) / 2;
+      chimneys.push({
+        center: [ccx, ccy],
+        width: Math.max(0.4, Math.round(w * 20) / 20),
+        length: Math.max(0.4, Math.round((lPlan / Math.cos((pitchDeg * Math.PI) / 180)) * 20) / 20),
+      });
+    }
+  }
+
   const faces = vectorize(grid, faceLabel, facePlanes, P, z, theta, outlinePoly);
 
   let assigned = 0;
@@ -653,6 +744,7 @@ export function segmentRoof(
   }
   return {
     faces,
+    chimneys,
     ground,
     shift,
     diagnostics: {

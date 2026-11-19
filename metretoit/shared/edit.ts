@@ -1,7 +1,17 @@
 // Opérations d'édition du modèle de toiture (fonctions pures, testées).
 import type { LonLat } from "./geo";
 import { makeFrame, toLocal, distPointSegment, polygonArea } from "./geo";
-import { type RoofModel, type RoofFace, type EdgeType, vertexKey, edgeKey, newId } from "./roof";
+import {
+  type RoofModel,
+  type RoofFace,
+  type EdgeType,
+  type RoofElement,
+  type ElementType,
+  ELEMENT_TYPES,
+  vertexKey,
+  edgeKey,
+  newId,
+} from "./roof";
 
 const clone = (m: RoofModel): RoofModel => JSON.parse(JSON.stringify(m));
 const same = (a: LonLat, b: LonLat) => vertexKey(a) === vertexKey(b);
@@ -145,4 +155,26 @@ export function uniqueVertices(model: RoofModel): LonLat[] {
   const seen = new Map<string, LonLat>();
   for (const f of model.faces) for (const p of f.ring) seen.set(vertexKey(p), p);
   return [...seen.values()];
+}
+
+// ---------- éléments de toiture ----------
+
+export function addElement(model: RoofModel, type: ElementType, center: LonLat): { model: RoofModel; id: string } {
+  const m = clone(model);
+  const d = ELEMENT_TYPES.find((e) => e.type === type)!;
+  const el: RoofElement = { id: newId("el"), type, center: [center[0], center[1]], width: d.width, length: d.length };
+  m.elements = [...(m.elements ?? []), el];
+  return { model: m, id: el.id };
+}
+
+export function updateElement(model: RoofModel, id: string, patch: Partial<RoofElement>): RoofModel {
+  const m = clone(model);
+  m.elements = (m.elements ?? []).map((e) => (e.id === id ? { ...e, ...patch, auto: patch.auto ?? false } : e));
+  return m;
+}
+
+export function deleteElement(model: RoofModel, id: string): RoofModel {
+  const m = clone(model);
+  m.elements = (m.elements ?? []).filter((e) => e.id !== id);
+  return m;
 }
