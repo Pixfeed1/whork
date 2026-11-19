@@ -547,7 +547,8 @@ function header(doc: PDFKit.PDFDocument, input: ReportInput) {
   let lx = M;
   if (o.logo && o.logo.length) {
     try {
-      doc.image(o.logo, M, 26, { fit: [140, 70] });
+      // logo bien visible : jusqu'à 270 × 84 pt, centré verticalement dans le bandeau d'en-tête
+      doc.image(o.logo, M, 22, { fit: [270, 84], valign: "center" });
       lx = M;
     } catch {
       /* format de logo non supporté par pdfkit (ex. WebP) */
