@@ -64,7 +64,7 @@ export function MentionsPage() {
     <LegalLayout title="Mentions légales" updated={l.updated}>
       <h2>Éditeur du service</h2>
       <p>
-        Le service MétréToit est édité par <V v={l.company} label="raison sociale" />, <V v={l.form} label="forme juridique" />
+        Le service Relevéo est édité par <V v={l.company} label="raison sociale" />, <V v={l.form} label="forme juridique" />
         {l.capital ? <> au capital de {l.capital}</> : null}, dont le siège est situé <V v={l.address} label="adresse du siège" />.
       </p>
       <p>
@@ -105,7 +105,7 @@ export function CguPage() {
     <LegalLayout title="Conditions générales d'utilisation" updated={l.updated}>
       <h2>1. Objet</h2>
       <p>
-        Les présentes conditions encadrent l'utilisation du service en ligne MétréToit (le « Service »), édité par{" "}
+        Les présentes conditions encadrent l'utilisation du service en ligne Relevéo (le « Service »), édité par{" "}
         <V v={l.company} label="raison sociale" />, qui permet d'estimer à distance les métrés d'une toiture (surfaces, pentes,
         linéaires) et d'éditer des rapports. La création d'un compte vaut acceptation des présentes conditions.
       </p>

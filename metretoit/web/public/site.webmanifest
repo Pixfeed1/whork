@@ -1,6 +1,6 @@
 {
-  "name": "MétréToit",
-  "short_name": "MétréToit",
+  "name": "Relevéo",
+  "short_name": "Relevéo",
   "description": "Métrage automatique de toiture à distance",
   "start_url": "/app",
   "display": "standalone",

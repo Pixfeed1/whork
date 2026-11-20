@@ -94,14 +94,14 @@ function AppShell() {
     setUserMenu(false);
   }, [loc.pathname]);
   const fullBleed = /^\/app\/(etudes\/|nouvelle)/.test(loc.pathname);
-  const title = PAGE_TITLES.find(([r]) => r.test(loc.pathname))?.[1] ?? "MétréToit";
+  const title = PAGE_TITLES.find(([r]) => r.test(loc.pathname))?.[1] ?? "Relevéo";
   const initial = (me?.user?.name ?? "?").trim().charAt(0).toUpperCase();
 
   const sidebar = (
     <aside className={`sidebar ${drawer ? "open" : ""}`} aria-label="Menu principal">
       <div className="sb-brand">
         <Link to="/app" aria-label="Mes études">
-          <Logo size={34} />
+          <Logo size={44} />
         </Link>
         {me?.org?.hasLogo && (
           <>

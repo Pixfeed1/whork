@@ -1,4 +1,4 @@
-# MétréToit — métrage automatique de toiture à distance
+# Relevéo — métrage automatique de toiture à distance
 
 Application web (SaaS) pour artisans couvreurs. On saisit une adresse, l'application détecte les pans de la
 toiture à partir d'un relevé 3D aérien et calcule automatiquement :

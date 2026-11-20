@@ -920,7 +920,7 @@ dl.kv dd {
 }
 
 /* =====================================================================
-   Charte MétréToit (Montserrat, bleu océan, boutons pilule)
+   Charte Relevéo (Montserrat, bleu océan, boutons pilule)
    ===================================================================== */
 h1,
 h2,
@@ -2260,4 +2260,24 @@ input.mini {
 }
 .fac-label.off {
   background: #9ca3af;
+}
+
+/* marque Relevéo : la marque complète, et la pastille « R » seulement quand la place manque */
+.logo-img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.logo .logo-compact {
+  display: none;
+  border-radius: 22%;
+}
+.shell2.is-full .logo .logo-compact {
+  display: block;
+}
+@media (max-width: 760px) {
+  .topbar .logo .logo-compact {
+    display: block;
+  }
 }

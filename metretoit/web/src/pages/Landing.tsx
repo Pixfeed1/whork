@@ -32,14 +32,14 @@ export function LandingPage() {
           <h1>Le métré de toiture automatique pour les couvreurs</h1>
           <p>Une adresse suffit : surfaces, pentes et linéaires calculés en quelques secondes, sans monter sur le toit.</p>
           <a href="#contact" className="btn btn-outline-light btn-lg">
-            Essayer MétréToit
+            Essayer Relevéo
           </a>
         </div>
       </section>
 
       <section className="feature-row" id="metres">
         <div className="feature-text">
-          <span className="pill-tag">MétréToit Rapports</span>
+          <span className="pill-tag">Relevéo Rapports</span>
           <h2 className="caps">Rapports de métrage en quelques secondes</h2>
           <ul>
             <li>Surface, pente et orientation de chaque pan, en vraie grandeur.</li>
@@ -51,13 +51,13 @@ export function LandingPage() {
           </a>
         </div>
         <div className="feature-card">
-          <img src="/img/rapports.webp" alt="Pages d'un rapport de métrage MétréToit" loading="lazy" />
+          <img src="/img/rapports.webp" alt="Pages d'un rapport de métrage Relevéo" loading="lazy" />
         </div>
       </section>
 
       <section className="feature-row reverse" id="plateforme">
         <div className="feature-text">
-          <span className="pill-tag">MétréToit Plateforme</span>
+          <span className="pill-tag">Relevéo Plateforme</span>
           <h2 className="caps">Un outil complet, sur tous vos écrans</h2>
           <ul>
             <li>Détection automatique à partir du relevé 3D LiDAR HD de l'IGN et de Google Solar API.</li>
@@ -69,7 +69,7 @@ export function LandingPage() {
           </a>
         </div>
         <div className="feature-card">
-          <img src="/img/plateforme.webp" alt="L'éditeur MétréToit sur ordinateur et smartphone" loading="lazy" />
+          <img src="/img/plateforme.webp" alt="L'éditeur Relevéo sur ordinateur et smartphone" loading="lazy" />
         </div>
       </section>
 
@@ -97,7 +97,7 @@ export function LandingPage() {
             <br />
             <strong>Lancez-vous.</strong>
           </h2>
-          <p>MétréToit n'est pas qu'un logiciel : c'est un outil pensé avec des couvreurs, pour des couvreurs.</p>
+          <p>Relevéo n'est pas qu'un logiciel : c'est un outil pensé avec des couvreurs, pour des couvreurs.</p>
           <p>Créez votre compte : vos premières études sont prêtes en quelques secondes.</p>
         </div>
         <div className="contact-form">
@@ -133,7 +133,7 @@ export function LandingPage() {
           </a>
           <a href="#contact">Créer un compte</a>
         </div>
-        <p className="foot-copy tiny muted">© {new Date().getFullYear()} MétréToit · Données aériennes © IGN Géoplateforme</p>
+        <p className="foot-copy tiny muted">© {new Date().getFullYear()} Relevéo · Données aériennes © IGN Géoplateforme</p>
       </footer>
     </div>
   );

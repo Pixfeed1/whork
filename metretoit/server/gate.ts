@@ -19,7 +19,7 @@ function gateConfig(): { user: string; hash: string } | null {
 }
 
 // chemins accessibles sans être passé par la page d'accès
-const OPEN = new Set(["/acces", "/api/health", "/api/billing/webhook", "/img/hero-re.jpg", "/favicon.svg", "/favicon.ico", "/favicon-32.png", "/apple-touch-icon.png"]);
+const OPEN = new Set(["/acces", "/api/health", "/api/billing/webhook", "/img/hero-re.jpg", "/img/releveo-blanc.png", "/favicon.svg", "/favicon.ico", "/favicon-32.png", "/apple-touch-icon.png"]);
 
 function readCookie(req: Request): string | null {
   for (const part of (req.headers.cookie ?? "").split(";")) {
@@ -111,7 +111,7 @@ function sendPage(res: Response, error: string, nextUrl: string, status = 200) {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0f7ea8">
-<title>Accès protégé · MétréToit</title>
+<title>Accès protégé · Relevéo</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 ${fontCss}
@@ -144,8 +144,7 @@ footer{position:relative;text-align:center;color:rgba(255,255,255,.7);font-size:
 <main>
 <div style="width:100%;max-width:410px">
 <div class="brand">
-<svg width="50" height="50" viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="28.5" stroke="currentColor" stroke-width="4"/><path d="M15 35 32 19.5 49 35" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 45.5h28" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><path d="M18 40.5v5M25 43v2.5M32 41v4.5M39 43v2.5M46 40.5v5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
-<b><span>MÉTRÉ</span><span>TOIT</span></b>
+<img src="/img/releveo-blanc.png" width="250" height="85" alt="Relevéo.fr — On mesure. Vous chiffrez.">
 </div>
 <form class="card" method="post" action="/acces" autocomplete="on">
 <div class="lock"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10.5" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></div>
@@ -160,7 +159,7 @@ ${error ? `<div class="err" role="alert">${esc(error)}</div>` : ""}
 </form>
 </div>
 </main>
-<footer>© ${new Date().getFullYear()} MétréToit · Vue aérienne © IGN</footer>
+<footer>© ${new Date().getFullYear()} Relevéo · Vue aérienne © IGN</footer>
 </body>
 </html>`);
 }

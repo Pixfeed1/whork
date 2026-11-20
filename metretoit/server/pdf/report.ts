@@ -17,6 +17,8 @@ import { ignOrtho, toL93 } from "../providers/ign";
 import { roofView, fitPolys, VIEW_BEARINGS } from "../../shared/view3d";
 import { computeFacades, OPENING_LABEL, type FacadesResult } from "../../shared/facades";
 import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 // Police Montserrat (repli sur Helvetica si indisponible)
 const require_ = createRequire(import.meta.url);
@@ -90,7 +92,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
       Title: `Rapport de métrage - ${input.address}`,
       Author: input.org.name,
       Subject: "Métrage de toiture",
-      Creator: "MétréToit",
+      Creator: "Relevéo",
     },
   });
   let REG = "Helvetica";
@@ -541,22 +543,37 @@ function sourceText(model: RoofModel, imagery = "IGN (Géoplateforme)"): string 
   return parts.join(" · ") + ".";
 }
 
+let brandLogoCache: Buffer | null | undefined;
+/** Logo Relevéo (web/public/img/releveo.png, copié dans dist/web au build). */
+function brandLogo(): Buffer | null {
+  if (brandLogoCache !== undefined) return brandLogoCache;
+  brandLogoCache = null;
+  for (const rel of ["dist/web/img/releveo.png", "web/public/img/releveo.png"]) {
+    const f = path.resolve(process.cwd(), rel);
+    if (existsSync(f)) {
+      brandLogoCache = readFileSync(f);
+      break;
+    }
+  }
+  return brandLogoCache;
+}
+
 function header(doc: PDFKit.PDFDocument, input: ReportInput) {
   const o = input.org;
   doc.rect(0, 0, A4.w, 6).fillColor(BRAND).fill();
-  let lx = M;
-  if (o.logo && o.logo.length) {
+  // logo de l'entreprise s'il a été téléversé, sinon la marque Relevéo
+  const logo = o.logo && o.logo.length ? o.logo : brandLogo();
+  let drawn = false;
+  if (logo) {
     try {
       // logo bien visible : jusqu'à 270 × 84 pt, centré verticalement dans le bandeau d'en-tête
-      doc.image(o.logo, M, 22, { fit: [270, 84], valign: "center" });
-      lx = M;
+      doc.image(logo, M, 22, { fit: [270, 84], valign: "center" });
+      drawn = true;
     } catch {
       /* format de logo non supporté par pdfkit (ex. WebP) */
-      doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(16).text(o.name, lx, 40, { width: 260 });
     }
-  } else {
-    doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(16).text(o.name, lx, 40, { width: 260 });
   }
+  if (!drawn) doc.fillColor(BRAND).font(fontsInUse.bold).fontSize(16).text(o.name, M, 40, { width: 260 });
   const lines = [
     o.name,
     o.address,

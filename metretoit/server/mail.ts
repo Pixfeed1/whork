@@ -30,14 +30,14 @@ export async function sendMail(to: string, subject: string, text: string, html: 
 export function resetMail(name: string, link: string) {
   const text = `Bonjour ${name},
 
-Vous avez demandé à réinitialiser votre mot de passe MétréToit.
+Vous avez demandé à réinitialiser votre mot de passe Relevéo.
 Cliquez sur ce lien (valable 1 heure) pour choisir un nouveau mot de passe :
 ${link}
 
 Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe actuel reste valable.`;
   const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1b2b3f;max-width:520px">
 <p>Bonjour ${escapeHtml(name)},</p>
-<p>Vous avez demandé à réinitialiser votre mot de passe <b>MétréToit</b>.</p>
+<p>Vous avez demandé à réinitialiser votre mot de passe <b>Relevéo</b>.</p>
 <p><a href="${link}" style="display:inline-block;background:#0f7ea8;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:bold">Choisir un nouveau mot de passe</a></p>
 <p style="color:#6b7280;font-size:13px">Ce lien est valable 1 heure. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe actuel reste valable.</p>
 </div>`;
