@@ -880,7 +880,9 @@ app.get(
   "/api/tiles/google/status",
   requireAuth,
   wrap(async (_req, res) => {
-    res.json({ available: await googleTilesAvailable() });
+    // jsKey : clé « navigateur » (restreinte au domaine du site, Maps JavaScript API seule) pour la carte
+    // satellite Google de l'éditeur, autorisée en Europe contrairement aux tuiles de la Map Tiles API
+    res.json({ available: await googleTilesAvailable(), jsKey: process.env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null });
   }),
 );
 app.get(

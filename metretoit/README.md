@@ -96,6 +96,9 @@ Voir `.env.example`. Principales variables :
   *Solar API* (relevé 3D), *Geocoding API*, *Map Tiles API* (photos HD de l'éditeur et du rapport ; refusée
   aux comptes facturés dans l'Union européenne), *Maps Static API* (photo HD du rapport en remplacement),
   *Street View Static API* (photos des façades). Restreindre la clé à l'adresse IP du serveur.
+- `GOOGLE_MAPS_BROWSER_KEY` : seconde clé, pour la photo satellite Google dans l'éditeur (*Maps JavaScript API*,
+  type de carte « satellite »), seule voie autorisée par Google pour les comptes européens. Restreindre cette clé
+  aux sites web `https://<domaine>/*` et à la seule *Maps JavaScript API* : elle est visible dans le navigateur.
 - `ALLOW_SIGNUP=false` : ferme les inscriptions publiques (usage interne d'une seule entreprise).
 - `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` : active les abonnements payants
   (essai gratuit de `TRIAL_STUDIES` études, puis abonnement). Webhook Stripe à déclarer sur

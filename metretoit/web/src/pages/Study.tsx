@@ -48,6 +48,7 @@ export function StudyPage() {
     return "ortho";
   });
   const [googleTiles, setGoogleTiles] = useState(false);
+  const [googleJsKey, setGoogleJsKey] = useState<string | null>(null);
   const setBasemap = (b: Basemap) => {
     setBasemapState(b);
     try {
@@ -57,8 +58,11 @@ export function StudyPage() {
     }
   };
   useEffect(() => {
-    api<{ available: boolean }>("/tiles/google/status")
-      .then((r) => {
+    api<{ available: boolean; jsKey?: string | null }>("/tiles/google/status")
+      .then((r0) => {
+        // photo Google : tuiles relayées par le serveur, ou carte Maps JavaScript (comptes européens)
+        const r = { available: r0.available || !!r0.jsKey };
+        setGoogleJsKey(r0.available ? null : (r0.jsKey ?? null));
         setGoogleTiles(r.available);
         let pref: string | null = null;
         try {
@@ -370,6 +374,7 @@ export function StudyPage() {
           showLabels={labels}
           highlightType={hl}
           basemap={basemap}
+          googleJsKey={googleJsKey}
           fitKey={fitKey}
         />
         {busy && (

@@ -2281,3 +2281,19 @@ input.mini {
     display: block;
   }
 }
+
+/* photo satellite Google (Maps JavaScript) placée sous la carte de l'éditeur */
+.gmap-under {
+  pointer-events: none;
+  display: none;
+}
+.map-wrap.is-google .gmap-under {
+  display: block;
+}
+/* logo et mentions Google visibles : la carte MapLibre décale ses contrôles du bas */
+.map-wrap.is-google .maplibregl-ctrl-bottom-left {
+  bottom: 24px;
+}
+.map-wrap.is-google .maplibregl-ctrl-bottom-right {
+  bottom: 18px;
+}

@@ -5,6 +5,7 @@ import type { LonLat } from "../../../shared/geo";
 import { type RoofModel, type RoofMetrics, EDGE_COLOR, ELEMENT_TYPES, vertexKey, computeMetrics } from "../../../shared/roof";
 import { moveVertex, insertVertex, uniqueVertices, updateElement } from "../../../shared/edit";
 import { baseStyle, FACE_COLORS } from "./mapStyle";
+import { attachGoogleUnderlay, type GoogleUnderlay } from "./googleUnderlay";
 
 export type Basemap = "ortho" | "plan" | "google";
 export type Tool = "select" | "draw" | "insert" | "split" | "element";
@@ -31,6 +32,8 @@ interface Props {
   showLabels: boolean;
   highlightType: string | null;
   basemap: Basemap;
+  /** clé Google « navigateur » : photo satellite via Maps JavaScript (sinon tuiles relayées par le serveur) */
+  googleJsKey?: string | null;
   fitKey: string;
 }
 
@@ -39,6 +42,8 @@ const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: 
 
 export function RoofEditor(p: Props) {
   const el = useRef<HTMLDivElement>(null);
+  const gHost = useRef<HTMLDivElement>(null);
+  const [gActive, setGActive] = useState(false);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const props = useRef(p);
   props.current = p;
@@ -159,8 +164,32 @@ export function RoofEditor(p: Props) {
     if (!m || !ready) return;
     m.setLayoutProperty("ortho", "visibility", p.basemap === "ortho" ? "visible" : "none");
     m.setLayoutProperty("plan", "visibility", p.basemap === "plan" ? "visible" : "none");
-    m.setLayoutProperty("gsat", "visibility", p.basemap === "google" ? "visible" : "none");
-  }, [ready, p.basemap]);
+    const jsMode = p.basemap === "google" && !!p.googleJsKey;
+    m.setLayoutProperty("gsat", "visibility", p.basemap === "google" && !jsMode ? "visible" : "none");
+    if (!jsMode) {
+      m.setMaxZoom(22.5);
+      setGActive(false);
+      return;
+    }
+    // photo satellite Google sous la carte (Maps JavaScript)
+    let under: GoogleUnderlay | null = null;
+    let cancelled = false;
+    attachGoogleUnderlay(m, gHost.current!, p.googleJsKey!, (z) => !cancelled && m.setMaxZoom(z)).then((u) => {
+      if (cancelled) return u?.destroy();
+      under = u;
+      if (u) setGActive(true);
+      else {
+        // Google indisponible : on revient sur la photo IGN
+        m.setLayoutProperty("ortho", "visibility", "visible");
+        m.setMaxZoom(22.5);
+      }
+    });
+    return () => {
+      cancelled = true;
+      under?.destroy();
+      setGActive(false);
+    };
+  }, [ready, p.basemap, p.googleJsKey]);
 
   // ---------- rendu ----------
   const render = (model: RoofModel, metrics: RoofMetrics | null) => {
@@ -540,7 +569,8 @@ export function RoofEditor(p: Props) {
   }, [ready]);
 
   return (
-    <div className="map-wrap">
+    <div className={`map-wrap ${gActive ? "is-google" : ""}`}>
+      <div ref={gHost} className="map gmap-under" aria-hidden="true" />
       <div ref={el} className="map" data-testid="editor-map" />
       {hint && <div className="map-hint">{hint}</div>}
       {p.tool === "draw" && (
