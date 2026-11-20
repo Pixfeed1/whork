@@ -10,6 +10,8 @@ export const PRO_MONTHLY_STUDIES = Number(process.env.PRO_MONTHLY_STUDIES ?? 0);
 export function quotaStatus(orgId: string) {
   const org = one<any>("SELECT plan, plan_status FROM organizations WHERE id = ?", orgId);
   if (!billingEnabled()) return { enforced: false, plan: org?.plan ?? "trial", allowed: true, used: 0, limit: 0 };
+  // compte interne (administration, tests) : jamais limité
+  if (org?.plan === "interne") return { enforced: false, plan: "interne", allowed: true, used: 0, limit: 0 };
   const isPro = org?.plan === "pro" && ["active", "trialing"].includes(org?.plan_status);
   if (isPro) {
     const used = usageThisMonth(orgId, "analysis");

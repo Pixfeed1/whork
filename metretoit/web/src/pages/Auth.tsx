@@ -35,7 +35,7 @@ export function LoginPage() {
           <Logo size={46} />
         </Link>
         <h1 className="caps">Connexion</h1>
-        <input type="email" autoComplete="email" required placeholder="Adresse e-mail" aria-label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} required placeholder="Adresse e-mail ou identifiant" aria-label="E-mail ou identifiant" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input
           type="password"
           autoComplete="current-password"

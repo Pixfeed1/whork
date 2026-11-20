@@ -17,6 +17,7 @@
     "e2e": "tsx scripts/e2e.ts",
     "test:all": "npm test && npm run build",
     "acces": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/acces.mjs",
+    "compte": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/compte.mjs",
     "restart": "bash scripts/restart.sh",
     "update": "git pull && npm ci && npm run build && bash scripts/restart.sh"
   },

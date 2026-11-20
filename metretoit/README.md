@@ -123,6 +123,17 @@ npm run acces -- --statut
 npm run acces -- --off
 ```
 
+### Compte d'administration (tests)
+
+Crée un compte interne, sans limite d'études ni abonnement, dans une entreprise « Pixfeed (administration) » à part
+(la même commande change son mot de passe) :
+
+```bash
+npm run compte -- pixfeed
+```
+
+Connexion sur la page « Connexion » avec l'identifiant `pixfeed` à la place de l'adresse e-mail.
+
 ### E-mails et pages légales
 
 - `SMTP_*` : active le lien « Mot de passe oublié » envoyé par e-mail (valable 1 heure). Sans SMTP, le responsable du
