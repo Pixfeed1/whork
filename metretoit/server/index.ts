@@ -20,6 +20,7 @@ import { gateMiddleware, gateGet, gatePost } from "./gate";
 import { randomBytes, createHash } from "node:crypto";
 import { googleKey, googleGeocode } from "./providers/google";
 import { googleTilesAvailable, fetchGoogleTile } from "./providers/googleTiles";
+import { googleStaticAvailable, fetchGoogleStatic } from "./providers/googleStatic";
 import { facadeStreetView } from "./providers/streetview";
 import { computeFacades, type FacadeMetrics } from "../shared/facades";
 import { analyzeRoof, fitFace, type SourcePref } from "./analysis/pipeline";
@@ -736,6 +737,11 @@ app.post(
           credit: "Google",
         }
       : null;
+    // tuiles refusées (comptes européens) : photo unique Google Maps Static, sinon IGN
+    const staticImagery =
+      !tiles && (await googleStaticAvailable().catch(() => false))
+        ? { fetch: fetchGoogleStatic, maxZoom: 21, scale: 2, maxSize: 640, credit: "Google" }
+        : null;
     // photos Street View des façades retenues
     const facadePhotos = new Map<string, { img: Buffer; date?: string | null }>();
     if (model.facades?.enabled) {
@@ -747,6 +753,7 @@ app.post(
     const pdf = await generateReport({
       facadePhotos,
       tiles,
+      staticImagery,
       org: { ...org, logo: org.logo ? Buffer.from(org.logo) : null },
       number,
       date: new Date(),

@@ -55,8 +55,19 @@ export interface TileImagery {
   credit: string;
 }
 
+/** Photo aérienne d'un seul tenant (ex. Google Maps Static) : centre, zoom Web Mercator, taille en pixels logiques */
+export interface StaticImagery {
+  fetch: (center: LonLat, zoom: number, width: number, height: number) => Promise<Buffer | null>;
+  maxZoom: number;
+  /** pixels réels par pixel logique (scale=2 chez Google) */
+  scale: number;
+  maxSize: number;
+  credit: string;
+}
+
 export interface ReportInput {
   tiles?: TileImagery | null;
+  staticImagery?: StaticImagery | null;
   /** photos Street View des façades (clé de façade -> image) */
   facadePhotos?: Map<string, { img: Buffer; date?: string | null }>;
   org: ReportOrg;
@@ -141,7 +152,7 @@ export async function generateReport(input: ReportInput): Promise<Buffer> {
 
   // vue aérienne
   const imgBox = { x: M, y, w: A4.w - 2 * M, h: 330 };
-  const imageryCredit = await drawAerial(doc, input.model, metrics, imgBox, allPts, input.tiles ?? null);
+  const imageryCredit = await drawAerial(doc, input.model, metrics, imgBox, allPts, input.tiles ?? null, input.staticImagery ?? null);
   y = imgBox.y + imgBox.h + 14;
 
   // chiffres clés
@@ -645,6 +656,70 @@ const merc = (p: LonLat): XY => {
   return [((p[0] + 180) / 360) * 256, ((1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2) * 256];
 };
 
+/** emprise Web Mercator (unités du zoom 0) au ratio de la boîte, avec marge */
+function mercBounds(box: Box, pts: LonLat[]) {
+  const m = pts.map(merc);
+  let x0 = Math.min(...m.map((p) => p[0]));
+  let x1 = Math.max(...m.map((p) => p[0]));
+  let y0 = Math.min(...m.map((p) => p[1]));
+  let y1 = Math.max(...m.map((p) => p[1]));
+  const pad = Math.max(1e-5, 0.1 * Math.max(x1 - x0, y1 - y0));
+  x0 -= pad;
+  x1 += pad;
+  y0 -= pad;
+  y1 += pad;
+  const ratio = box.w / box.h;
+  if ((x1 - x0) / (y1 - y0) > ratio) {
+    const h = (x1 - x0) / ratio;
+    const c = (y0 + y1) / 2;
+    y0 = c - h / 2;
+    y1 = c + h / 2;
+  } else {
+    const w = (y1 - y0) * ratio;
+    const c = (x0 + x1) / 2;
+    x0 = c - w / 2;
+    x1 = c + w / 2;
+  }
+  return { x0, x1, y0, y1 };
+}
+
+const unmerc = (x: number, y: number): LonLat => [
+  (x / 256) * 360 - 180,
+  (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 256))) * 180) / Math.PI,
+];
+
+/** photo d'un seul tenant (Google Maps Static) : zoom le plus fort qui couvre toute l'emprise */
+async function drawStaticImagery(
+  doc: PDFKit.PDFDocument,
+  box: Box,
+  pts: LonLat[],
+  src: StaticImagery,
+): Promise<{ f: (p: LonLat) => XY; mPerPt: number } | null> {
+  const { x0, x1, y0, y1 } = mercBounds(box, pts);
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  for (let z = src.maxZoom; z >= 15; z--) {
+    const k = 2 ** z;
+    const w = Math.ceil((x1 - x0) * k) + 2;
+    const h = Math.ceil((y1 - y0) * k) + 2;
+    if (w > src.maxSize || h > src.maxSize) continue;
+    const img = await src.fetch(unmerc(cx, cy), z, w, h).catch(() => null);
+    if (!img) return null;
+    const s = box.w / ((x1 - x0) * k); // points PDF par pixel logique
+    // l'image est centrée sur (cx, cy) et couvre w × h pixels logiques
+    doc.image(img, box.x + ((cx - x0) * k - w / 2) * s, box.y + ((cy - y0) * k - h / 2) * s, { width: w * s, height: h * s });
+    const mPerPx = (156543.03392 * Math.cos((unmerc(cx, cy)[1] * Math.PI) / 180)) / k;
+    return {
+      f: (p: LonLat): XY => {
+        const q = merc(p);
+        return [box.x + (q[0] - x0) * k * s, box.y + (q[1] - y0) * k * s];
+      },
+      mPerPt: mPerPx / s,
+    };
+  }
+  return null;
+}
+
 async function drawTiledImagery(
   doc: PDFKit.PDFDocument,
   box: Box,
@@ -719,7 +794,19 @@ async function drawAerial(
   box: Box,
   pts: LonLat[],
   tiles: TileImagery | null,
+  staticImagery: StaticImagery | null = null,
 ): Promise<string> {
+  if (staticImagery) {
+    doc.save();
+    doc.roundedRect(box.x, box.y, box.w, box.h, 6).clip();
+    const t = await drawStaticImagery(doc, box, pts, staticImagery).catch(() => null);
+    if (t) {
+      drawOverlay(doc, model, metrics, box, t.f, 1 / t.mPerPt, true);
+      doc.restore();
+      return staticImagery.credit;
+    }
+    doc.restore();
+  }
   if (tiles) {
     doc.save();
     doc.roundedRect(box.x, box.y, box.w, box.h, 6).clip();

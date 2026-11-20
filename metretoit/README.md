@@ -93,7 +93,8 @@ La base est un fichier SQLite dans `DATA_DIR` : sauvegarder ce dossier (copie qu
 Voir `.env.example`. Principales variables :
 
 - `GOOGLE_MAPS_API_KEY` : active les services Google. APIs à activer et à autoriser sur la clé :
-  *Solar API* (relevé 3D), *Geocoding API*, *Map Tiles API* (photos HD de l'éditeur et du rapport),
+  *Solar API* (relevé 3D), *Geocoding API*, *Map Tiles API* (photos HD de l'éditeur et du rapport ; refusée
+  aux comptes facturés dans l'Union européenne), *Maps Static API* (photo HD du rapport en remplacement),
   *Street View Static API* (photos des façades). Restreindre la clé à l'adresse IP du serveur.
 - `ALLOW_SIGNUP=false` : ferme les inscriptions publiques (usage interne d'une seule entreprise).
 - `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` : active les abonnements payants
