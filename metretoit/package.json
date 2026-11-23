@@ -19,7 +19,7 @@
     "acces": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/acces.mjs",
     "compte": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/compte.mjs",
     "restart": "bash scripts/restart.sh",
-    "update": "git pull && npm ci && npm run build && bash scripts/restart.sh"
+    "update": "bash scripts/update.sh"
   },
   "dependencies": {
     "@fontsource/montserrat": "^5.3.0",

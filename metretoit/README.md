@@ -104,6 +104,13 @@ Voir `.env.example`. Principales variables :
   (essai gratuit de `TRIAL_STUDIES` études, puis abonnement). Webhook Stripe à déclarer sur
   `https://<domaine>/api/billing/webhook` (événements `checkout.session.completed`, `customer.subscription.*`).
 
+### Version de Node.js sur le serveur
+
+Relevéo a besoin de **Node.js 22 ou plus**. `npm run restart` et `npm run update` cherchent eux-mêmes un Node assez
+récent (le `node` par défaut d'un serveur cPanel ou d'une crontab peut être plus ancien). Pour imposer un chemin,
+ajouter dans `.env` : `NODE_BIN=/chemin/vers/node`. La crontab doit appeler `scripts/restart.sh`, jamais `npm start`
+directement.
+
 ### Page d'accès verrouillée (phase de test)
 
 Pour protéger tout le site (page d'accueil comprise) par un identifiant et un mot de passe, en SSH :
