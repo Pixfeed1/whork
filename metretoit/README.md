@@ -104,6 +104,13 @@ Voir `.env.example`. Principales variables :
   (essai gratuit de `TRIAL_STUDIES` études, puis abonnement). Webhook Stripe à déclarer sur
   `https://<domaine>/api/billing/webhook` (événements `checkout.session.completed`, `customer.subscription.*`).
 
+### Service système (recommandé)
+
+Avec un accès root, installer Relevéo comme service systemd : démarrage au boot et relance immédiate en cas d'arrêt.
+Le modèle est `deploy/releveo.service` (adapter l'utilisateur, le dossier et le chemin de Node 22). Une fois le service
+actif, `npm run restart` et `npm run update` (lancés par l'utilisateur, sans root) relancent l'application à travers
+lui. Retirer alors de la crontab les lignes de relance de Relevéo.
+
 ### Version de Node.js sur le serveur
 
 Relevéo a besoin de **Node.js 22 ou plus**. `npm run restart` et `npm run update` cherchent eux-mêmes un Node assez

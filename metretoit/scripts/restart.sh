@@ -6,6 +6,25 @@ PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2); PORT=${PORT:-3000}
 . scripts/node22.sh || exit 1
 
 LOG="$HOME/apps/metretoit.log"
+
+# Si Relevéo tourne comme service système (deploy/releveo.service), c'est systemd qui le relance :
+# il suffit d'arrêter le processus (il appartient à l'utilisateur, pas besoin d'être root),
+# systemd le redémarre aussitôt avec le nouveau code.
+if systemctl is-active --quiet releveo 2>/dev/null; then
+  PID=$(systemctl show -p MainPID --value releveo 2>/dev/null)
+  echo "===== $(date -u +%FT%TZ) relance du service releveo (${RESTART_REASON:-à la main}), instance précédente : ${PID:-?} =====" >> "$LOG" 2>/dev/null
+  [ -n "$PID" ] && [ "$PID" != "0" ] && kill "$PID"
+  for i in $(seq 1 20); do
+    sleep 1
+    NEW=$(systemctl show -p MainPID --value releveo 2>/dev/null)
+    if [ "$NEW" != "$PID" ] && curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null; then
+      echo "Relevéo (service système) redémarré sur le port $PORT (page d'accueil : $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/))"
+      exit 0
+    fi
+  done
+  echo "Le service releveo ne répond pas. Diagnostic (en root) : systemctl status releveo"; tail -8 "$LOG"
+  exit 1
+fi
 mkdir -p "$(dirname "$LOG")"
 # journal conservé d'une relance à l'autre (au-delà de 5 Mo, l'ancien part dans metretoit.log.1)
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 5000000 ]; then mv -f "$LOG" "$LOG.1"; fi

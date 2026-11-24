@@ -1,0 +1,23 @@
+# Service système Relevéo (systemd), à installer en root :
+#   cp deploy/releveo.service /etc/systemd/system/releveo.service
+#   systemctl daemon-reload && systemctl enable --now releveo
+# Adapter User, WorkingDirectory, le chemin de Node (22 ou plus) et le fichier journal si besoin.
+[Unit]
+Description=Relevéo (métré de toiture)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jurojinn
+WorkingDirectory=/home/jurojinn/apps/metretoit-src/metretoit
+Environment=NODE_ENV=production
+ExecStart=/opt/cpanel/ea-nodejs22/bin/node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server.js
+# relance automatique en cas d'arrêt, quelle qu'en soit la cause
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/jurojinn/apps/metretoit.log
+StandardError=append:/home/jurojinn/apps/metretoit.log
+
+[Install]
+WantedBy=multi-user.target
