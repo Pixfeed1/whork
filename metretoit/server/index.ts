@@ -920,10 +920,23 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 if (process.env.NODE_ENV !== "test") {
   const port = Number(process.env.PORT ?? 3000);
+  // journal des arrêts : on note la date et la cause, pour comprendre pourquoi l'application s'arrête
+  // (un arrêt par SIGKILL, ex. manque de mémoire ou nettoyage des processus par l'hébergeur, ne peut pas être noté)
+  const stamp = () => new Date().toISOString();
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const)
+    process.on(sig, () => {
+      console.error(`${stamp()} Arrêt : signal ${sig} reçu (pid ${process.pid})`);
+      process.exit(0);
+    });
+  process.on("uncaughtException", (e) => {
+    console.error(`${stamp()} Arrêt : erreur non gérée`, e);
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (e) => console.error(`${stamp()} Promesse rejetée non gérée`, e));
   // par défaut, écoute uniquement en local (le site public passe par Apache/Nginx en HTTPS)
   const host = process.env.HOST ?? "127.0.0.1";
   app
-    .listen(port, host, () => console.log(`Relevéo : http://${host}:${port}`))
+    .listen(port, host, () => console.log(`${new Date().toISOString()} Relevéo démarré : http://${host}:${port} (Node ${process.version}, pid ${process.pid})`))
     .on("error", (e: NodeJS.ErrnoException) => {
       console.error(e.code === "EADDRINUSE" ? `Le port ${port} est déjà utilisé : une autre instance tourne déjà.` : e);
       process.exit(1);
